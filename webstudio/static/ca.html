@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebStudio: trust this server</title>
+<meta name="color-scheme" content="dark light">
+<style>
+  :root { --bg:#0b0c0f; --panel:#14161b; --text:#ecedf1; --dim:#9298a5; --accent:#7c8cff; --line:rgba(255,255,255,.1); }
+  @media (prefers-color-scheme: light) { :root { --bg:#f4f5f8; --panel:#fff; --text:#15171c; --dim:#6a7080; --accent:#5468ff; --line:rgba(0,0,0,.1); } }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; padding:max(20px,env(safe-area-inset-top)) 18px 40px; }
+  main { max-width:680px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:-.02em; margin:8px 0 4px; }
+  p.lead { color:var(--dim); margin:0 0 18px; }
+  .btn { display:inline-block; background:linear-gradient(135deg,var(--accent),#b06cff); color:#fff; text-decoration:none; font-weight:650; padding:13px 20px; border-radius:14px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:6px 18px 14px; margin:16px 0; }
+  h2 { font-size:18px; margin:14px 0 2px; }
+  ol { padding-left:22px; margin:8px 0 0; } li { margin:6px 0; }
+  code { background:rgba(127,127,127,.18); padding:1px 6px; border-radius:6px; font-size:.92em; }
+  .note { color:var(--dim); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Trust the WebStudio server</h1>
+  <p class="lead">WebStudio uses HTTPS with its own private certificate authority. Install the certificate once on each device, then open the HTTPS address.</p>
+  <p><a class="btn" href="/ca/rootCA.crt">Download the certificate</a></p>
+  <p class="note">This is a public root certificate for your own network only. Install it only if you trust the person who runs this server.</p>
+
+  <section>
+    <h2>iPhone and iPad</h2>
+    <ol>
+      <li>Open this page in <b>Safari</b> and tap <b>Download the certificate</b>. Tap <b>Allow</b> when asked to download a configuration profile.</li>
+      <li>Open <b>Settings</b>. Tap <b>Profile Downloaded</b> near the top, then <b>Install</b> (enter your passcode) and <b>Install</b> again.</li>
+      <li>Go to <b>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</b>.</li>
+      <li>Switch on <b>full trust</b> for the WebStudio certificate (named like <code>mkcert &hellip;</code>) and confirm.</li>
+      <li>Open the HTTPS address of the server in Safari, then <b>Share &rarr; Add to Home Screen</b>.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Android</h2>
+    <ol>
+      <li>Download the certificate with the button above.</li>
+      <li>Open <b>Settings &rarr; Security &rarr; Encryption &amp; credentials &rarr; Install a certificate &rarr; CA certificate</b> (the path varies slightly by phone).</li>
+      <li>Tap <b>Install anyway</b> and choose the downloaded <code>WebStudio-CA.crt</code>.</li>
+      <li>Open the HTTPS address in Chrome and use <b>Install app</b> from the menu.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>macOS</h2>
+    <ol>
+      <li>Download the certificate and double-click it to open <b>Keychain Access</b>; add it to the <b>login</b> keychain.</li>
+      <li>Double-click the certificate, expand <b>Trust</b>, and set <b>When using this certificate</b> to <b>Always Trust</b>. Close the window and authenticate.</li>
+    </ol>
+    <p class="note">On the server Mac itself, <code>./setup.sh --trust-local</code> does this for you.</p>
+  </section>
+
+  <section>
+    <h2>Windows</h2>
+    <ol>
+      <li>Download the certificate, double-click it and choose <b>Install Certificate&hellip;</b> &rarr; <b>Local Machine</b>.</li>
+      <li>Choose <b>Place all certificates in the following store</b> &rarr; <b>Trusted Root Certification Authorities</b>, then finish.</li>
+      <li>Restart the browser. Firefox keeps its own store: in <b>Settings &rarr; Privacy &amp; Security &rarr; View Certificates &rarr; Authorities &rarr; Import</b>.</li>
+    </ol>
+  </section>
+</main>
+</body>
+</html>

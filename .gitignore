@@ -1,0 +1,11 @@
+data/
+certs/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+models/
+data-local/
+.ruff_cache/
+plan-*.md
