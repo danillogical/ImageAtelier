@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WebStudio: trust this server</title>
+<title>ImageAtelier: trust this server</title>
 <meta name="color-scheme" content="dark light">
 <style>
-  :root { --bg:#0b0c0f; --panel:#14161b; --text:#ecedf1; --dim:#9298a5; --accent:#7c8cff; --line:rgba(255,255,255,.1); }
-  @media (prefers-color-scheme: light) { :root { --bg:#f4f5f8; --panel:#fff; --text:#15171c; --dim:#6a7080; --accent:#5468ff; --line:rgba(0,0,0,.1); } }
+  :root { --bg:#0c1018; --panel:#131a27; --text:#efe8d8; --dim:#97a2b6; --accent:#7fb4c9; --accent2:#d4a84b; --accent-fg:#0c1018; --line:rgba(160,185,230,.14); }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5efe2; --panel:#fdfaf2; --text:#1a2233; --dim:#5b6475; --accent:#1f3a5f; --accent2:#8a6212; --accent-fg:#fff; --line:rgba(40,30,10,.14); } }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; padding:max(20px,env(safe-area-inset-top)) 18px 40px; }
   main { max-width:680px; margin:0 auto; }
   h1 { font-size:26px; letter-spacing:-.02em; margin:8px 0 4px; }
   p.lead { color:var(--dim); margin:0 0 18px; }
-  .btn { display:inline-block; background:linear-gradient(135deg,var(--accent),#b06cff); color:#fff; text-decoration:none; font-weight:650; padding:13px 20px; border-radius:14px; }
+  .btn { display:inline-block; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:var(--accent-fg); text-decoration:none; font-weight:650; padding:13px 20px; border-radius:14px; }
   section { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:6px 18px 14px; margin:16px 0; }
   h2 { font-size:18px; margin:14px 0 2px; }
   ol { padding-left:22px; margin:8px 0 0; } li { margin:6px 0; }
@@ -22,8 +22,8 @@
 </head>
 <body>
 <main>
-  <h1>Trust the WebStudio server</h1>
-  <p class="lead">WebStudio uses HTTPS with its own private certificate authority. Install the certificate once on each device, then open the HTTPS address.</p>
+  <h1>Trust the ImageAtelier server</h1>
+  <p class="lead">ImageAtelier uses HTTPS with its own private certificate authority. Install the certificate once on each device, then open the HTTPS address.</p>
   <p><a class="btn" href="/ca/rootCA.crt">Download the certificate</a></p>
   <p class="note">This is a public root certificate for your own network only. Install it only if you trust the person who runs this server.</p>
 
@@ -33,7 +33,7 @@
       <li>Open this page in <b>Safari</b> and tap <b>Download the certificate</b>. Tap <b>Allow</b> when asked to download a configuration profile.</li>
       <li>Open <b>Settings</b>. Tap <b>Profile Downloaded</b> near the top, then <b>Install</b> (enter your passcode) and <b>Install</b> again.</li>
       <li>Go to <b>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</b>.</li>
-      <li>Switch on <b>full trust</b> for the WebStudio certificate (named like <code>mkcert &hellip;</code>) and confirm.</li>
+      <li>Switch on <b>full trust</b> for the ImageAtelier certificate (named like <code>mkcert &hellip;</code>) and confirm.</li>
       <li>Open the HTTPS address of the server in Safari, then <b>Share &rarr; Add to Home Screen</b>.</li>
     </ol>
   </section>
@@ -43,7 +43,7 @@
     <ol>
       <li>Download the certificate with the button above.</li>
       <li>Open <b>Settings &rarr; Security &rarr; Encryption &amp; credentials &rarr; Install a certificate &rarr; CA certificate</b> (the path varies slightly by phone).</li>
-      <li>Tap <b>Install anyway</b> and choose the downloaded <code>WebStudio-CA.crt</code>.</li>
+      <li>Tap <b>Install anyway</b> and choose the downloaded <code>ImageAtelier-CA.crt</code>.</li>
       <li>Open the HTTPS address in Chrome and use <b>Install app</b> from the menu.</li>
     </ol>
   </section>

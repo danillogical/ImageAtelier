@@ -1,4 +1,4 @@
-"""Native macOS window for the local WebStudio server: starts uvicorn, shows the UI in pywebview, stops the server on quit."""
+"""Native macOS window for the local ImageAtelier server: starts uvicorn, shows the UI in pywebview, stops the server on quit."""
 from __future__ import annotations
 
 import os
@@ -8,15 +8,17 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 HOST = "127.0.0.1"
 START_TIMEOUT = 120.0
 STOP_TIMEOUT = 15.0
 _SIGNALS = {signal.SIGINT, signal.SIGTERM}
+ICON = Path(__file__).resolve().parent / "static" / "icons" / "icon-512.png"
 
 
 def server_command(port: int) -> list[str]:
-    return [sys.executable, "-m", "uvicorn", "webstudio.app:app", "--host", HOST, "--port", str(port),
+    return [sys.executable, "-m", "uvicorn", "imageatelier.app:app", "--host", HOST, "--port", str(port),
             "--timeout-graceful-shutdown", "3"]
 
 
@@ -52,6 +54,17 @@ def stop_server(proc: subprocess.Popen, timeout: float = STOP_TIMEOUT) -> None:
         proc.wait()
 
 
+def _set_dock_icon() -> None:
+    # The window runs in a bare Python process, so without this the Dock shows Python's generic icon.
+    try:
+        from AppKit import NSApplication, NSImage
+    except ImportError:  # pyobjc comes with pywebview on macOS; anywhere else keep the default icon
+        return
+    image = NSImage.alloc().initWithContentsOfFile_(str(ICON))
+    if image is not None:
+        NSApplication.sharedApplication().setApplicationIconImage_(image)
+
+
 def _close_on_signal(window, stop: threading.Event) -> None:
     # Python signal handlers never run inside the Cocoa runloop, so wait for signals on a helper thread instead.
     signal.sigwait(_SIGNALS)
@@ -79,7 +92,8 @@ def main() -> int:
         except ImportError:
             print("pywebview is missing; run: uv sync --inexact --extra gui", file=sys.stderr)
             return 1
-        window = webview.create_window("WebStudio", f"http://{HOST}:{port}", width=1280, height=900)
+        _set_dock_icon()
+        window = webview.create_window("ImageAtelier", f"http://{HOST}:{port}", width=1280, height=900)
         # Block the signals before pywebview spawns threads so only the helper thread receives them.
         signal.pthread_sigmask(signal.SIG_BLOCK, _SIGNALS)
         stop = threading.Event()

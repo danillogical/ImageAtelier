@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from webstudio.app import create_app
+from imageatelier.app import create_app
 
 from conftest import patch_parts
 
@@ -24,8 +24,8 @@ TERMINAL = ("done", "failed", "cancelled")
 def h(monkeypatch, tmp_path, ready, pe_ready):
     """Harness around a real (not yet started) Engine. Call h.start() for engine-level tests."""
     mlx_vlm = pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
-    from webstudio import models
+    from imageatelier import engine as eng_mod
+    from imageatelier import models
 
     log: list[tuple] = []  # ordered: ("job", id, state, t) | ("sync_start"|"sync_end", t)
     behaviour: deque = deque()  # per job that reaches its GPU work: "block" | "fail" | (absent -> quick)

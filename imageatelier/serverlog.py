@@ -18,7 +18,7 @@ MAX_LINES_PER_FLUSH = 50  # streamed lines per flush; a burst beyond this is sum
 DEFAULT_LOGGERS = ("", "uvicorn", "uvicorn.error")
 ACCESS_LOGGER = "uvicorn.access"
 # Records from this logger never enter the ring: it reports failures of the ring's own sinks (avoids feedback loops).
-SELF_LOGGER = "webstudio.serverlog"
+SELF_LOGGER = "imageatelier.serverlog"
 
 _self_log = logging.getLogger(SELF_LOGGER)
 
@@ -106,7 +106,7 @@ def install(include_access: bool = False, loggers: tuple[str, ...] = DEFAULT_LOG
             if _handler not in lg.handlers:
                 lg.addHandler(_handler)
         # Our own info lines (GPU guard, model swaps) must pass the logger level to reach the handler.
-        app_logger = logging.getLogger("webstudio")
+        app_logger = logging.getLogger("imageatelier")
         if app_logger.level == logging.NOTSET:
             app_logger.setLevel(logging.INFO)
         return _handler

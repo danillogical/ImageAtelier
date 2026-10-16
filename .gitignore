@@ -9,3 +9,4 @@ models/
 data-local/
 .ruff_cache/
 plan-*.md
+ImageAtelier.app/

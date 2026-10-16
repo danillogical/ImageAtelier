@@ -35,7 +35,7 @@ function buildShell() {
   el.tabs = h("div", { class: "tabs", role: "tablist" }, el.tabProjects, el.tabJobs);
   el.navGallery = h("a", { class: "nav-item", href: "#/gallery" }, icon("gallery"), "Gallery");
   el.sidebar = h("aside", { class: "sidebar" },
-    h("div", { class: "brand" }, h("img", { src: "/icons/favicon-32.png", width: 26, height: 26, alt: "" }), h("span", {}, "WebStudio")),
+    h("div", { class: "brand" }, h("img", { src: "/icons/favicon-32.png", width: 26, height: 26, alt: "" }), h("span", {}, "ImageAtelier")),
     h("button", { class: "btn primary block", onclick: newProject }, icon("plus", 18), "New project"),
     h("button", { class: "btn block from-image", type: "button", onclick: newFromImage }, icon("image", 18), "New from image…"),
     (el.file = h("input", { type: "file", accept: "image/*", hidden: true, onchange: onFilePicked })),
@@ -48,7 +48,7 @@ function buildShell() {
       h("div", { class: "grow" }, chipEl()),
       h("button", { class: "icon-btn", title: "Settings", "aria-label": "Settings", onclick: () => openSettings() }, icon("settings"))));
   el.scrim = h("div", { class: "scrim", onclick: () => toggleDrawer(false) });
-  el.topTitle = h("div", { class: "top-title" }, h("div", {}, "WebStudio"), chipEl());
+  el.topTitle = h("div", { class: "top-title" }, h("div", {}, "ImageAtelier"), chipEl());
   el.topbar = h("header", { class: "topbar" },
     h("button", { class: "icon-btn", "aria-label": "Projects", onclick: () => toggleDrawer(true) }, icon("menu")),
     el.topTitle,
@@ -246,7 +246,7 @@ function renderGallery() {
               h("small", { class: "dim" }, `${p.run_count} run${p.run_count === 1 ? "" : "s"} · ${timeAgo(p.updated_at)}`)));
         })))
       : h("div", { class: "empty" }, h("div", { class: "big" }, icon("spark", 40)), h("h2", {}, "Nothing here yet"),
-          h("p", { class: "dim" }, "Create a project and describe your first image."),
+          h("p", { class: "dim" }, "Every image begins with a single line. Create a project and describe your first one."),
           h("button", { class: "btn primary", onclick: newProject }, icon("plus", 18), "New project")));
 }
 const lbItemProject = (p) => ({ transparent: p.latest.transparent, url: p.latest.image_url, title: p.name, filename: `${p.name}-${p.latest.run}.png` });
@@ -837,7 +837,7 @@ function enhStateText(e) {
   if (e.phase === "thinking") return `Thinking… ${fmtTokens(e.tokens)} token${e.tokens === 1 ? "" : "s"}`;
   if (e.phase === "writing") return "Writing…";
   if (S.resident.state === "loading") return S.resident.key?.[0] === "image" ? "Switching models…" : "Loading prompt enhancer…";
-  return "Starting…";
+  return "Preparing the inks…";
 }
 // What the one busy-status line should say right now (an enhance session or an Enhance & Generate unit), or null.
 function currentStatus(pid) {

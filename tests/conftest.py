@@ -13,8 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from webstudio import models
-from webstudio.app import create_app
+from imageatelier import models
+from imageatelier.app import create_app
 
 
 class StubModelManager:
@@ -63,7 +63,7 @@ class _Gate:
 
 
 class StubEngine:
-    """Same public surface as webstudio.engine.Engine, generating a tiny RGBA PNG per job."""
+    """Same public surface as imageatelier.engine.Engine, generating a tiny RGBA PNG per job."""
 
     def __init__(self):
         self.submitted: list[dict] = []  # copies of every job dict passed to submit()

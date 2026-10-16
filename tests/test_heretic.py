@@ -11,8 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from webstudio import models
-from webstudio.app import create_app
+from imageatelier import models
+from imageatelier.app import create_app
 
 from conftest import StubEngine, new_project, patch_parts, wait_until
 
@@ -25,7 +25,7 @@ FOLDERS = {"t2i": "Qwen-Image-2.1-PE-T2I-Heretic-MLX-8bit", "i2i": "Qwen-Image-2
 def models_dir(monkeypatch, tmp_path):
     d = tmp_path / "models"
     d.mkdir()
-    monkeypatch.setenv("WEBSTUDIO_MODELS_DIR", str(d))
+    monkeypatch.setenv("IMAGEATELIER_MODELS_DIR", str(d))
     return d
 
 
@@ -168,7 +168,7 @@ class TestLocalModel:
 def live(monkeypatch, models_dir, ready, tmp_path):
     """create_app() builds the real Engine (settings flow from the API); only model loading is stubbed."""
     mlx_vlm = pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
+    from imageatelier import engine as eng_mod
 
     loads: list[tuple] = []
     real_resolve_pe, real_pe_status = models.resolve_pe, models.pe_status

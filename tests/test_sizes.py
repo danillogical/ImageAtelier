@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from webstudio import sizes
+from imageatelier import sizes
 
 RESOLUTIONS = list(range(256, 2049, 32))
 LABELS = ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16"]

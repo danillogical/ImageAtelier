@@ -26,7 +26,7 @@ _RUN_FILE_RE = re.compile(r"^(\d+)\.(?:png|json)$")
 
 
 def default_data_dir() -> Path:
-    env = os.environ.get("WEBSTUDIO_DATA")
+    env = os.environ.get("IMAGEATELIER_DATA")
     return Path(env).expanduser() if env else Path(__file__).resolve().parent.parent / "data"
 
 

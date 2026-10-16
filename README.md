@@ -1,4 +1,4 @@
-# WebStudio
+# ImageAtelier
 
 A small home-network web app for generating and editing images with **Qwen-Image-2.1-Heretic** on Apple Silicon (MLX).
 A *project* is one image lineage: the first prompt is text-to-image, every later prompt edits the project's current image.
@@ -24,7 +24,9 @@ Copy or rsync this folder to the Mac that will run it (the `certs/ca/` folder ca
 to also add the CA to *this* Mac's keychain (it prompts for your password; nothing touches the keychain otherwise).
 
 `./run.sh --http` serves everything over plain HTTP on :8080 for debugging. Set `PORT` / `CA_PORT` to change ports.
-Data (projects, images, settings) lives in `./data` (override with `WEBSTUDIO_DATA`).
+
+For use on this Mac only, `./local.sh` opens ImageAtelier in its own window on `localhost:8000`, with its own data in `./data-local`; quitting the window stops the server (`./local.sh --no-gui` serves in the terminal instead). `./generate-imageatelier-app.sh [folder]` builds `ImageAtelier.app`, a double-clickable launcher for `local.sh` in this checkout (drag it to Applications; regenerate it if the checkout moves).
+Data (projects, images, settings) lives in `./data` (override with `IMAGEATELIER_DATA`).
 
 To start at login: `./install-launchd.sh` (logs in `data/logs/`); remove with `./install-launchd.sh --uninstall`.
 
@@ -57,7 +59,7 @@ change `pe_thinking` in Settings).
 ### Local models (Heretic prompt enhancer and text encoder)
 
 Some models are not on the Hugging Face Hub and are installed by copying their folders into `models/` (or into the folder named
-by `WEBSTUDIO_MODELS_DIR`). The Heretic prompt enhancer is two of them: copy `Qwen-Image-2.1-PE-T2I-Heretic-MLX-8bit/` (new
+by `IMAGEATELIER_MODELS_DIR`). The Heretic prompt enhancer is two of them: copy `Qwen-Image-2.1-PE-T2I-Heretic-MLX-8bit/` (new
 images) and `Qwen-Image-2.1-PE-I2I-Heretic-MLX-8bit/` (edits), each an mlx-vlm 8-bit conversion that includes its own
 `system_prompt.txt`, into `models/`, then choose **Settings, Prompt enhancer, Heretic (uncensored)**. Each is about 10.4 GB. It
 is abliterated (fewer refusals, slightly less steerable on style). Settings shows "not installed" and disables the choice until both
@@ -81,7 +83,7 @@ That download is used as two parts: the **image model** (the official Qwen-Image
 They are chosen separately in Settings, and an *official* text encoder can be installed locally by copying
 `Qwen-Image-2.1-TextEncoder-MLX-8bit/` into `models/` (see API.md, "Model parts and composed folders").
 
-Turbo mode uses the `Viggle/Qwen-Image-2.1-viggle-turbo` LoRA (6 or 8 steps). Revisions are pinned in `webstudio/models.py`.
+Turbo mode uses the `Viggle/Qwen-Image-2.1-viggle-turbo` LoRA (6 or 8 steps). Revisions are pinned in `imageatelier/models.py`.
 Qwen-Image weights are under the Qwen research licence: check its terms before any use beyond personal and research use.
 The "Heretic" text encoder is **abliterated** (refusal behaviour removed), so it will not decline prompts; the people who can reach
 this server are responsible for what it generates. Keep it on a trusted network.
@@ -91,7 +93,7 @@ this server are responsible for what it generates. Keep it on a trusted network.
 - **Certificate name mismatch after your IP or host name changed:** re-run `./setup.sh`, then restart `./run.sh`. Devices keep
   trusting the same CA, so phones need no new setup.
 - **A UI update does not show on the phone:** the service worker serves the app shell from cache. Bump `VERSION` in
-  `webstudio/static/sw.js` whenever static files change, then reload twice.
+  `imageatelier/static/sw.js` whenever static files change, then reload twice.
 - **The `.local` name does not resolve:** use the IP address shown by `./run.sh` (the certificate includes it), or check that the
   phone is on the same Wi-Fi network as the Mac.
 - **Port already in use:** another server (or a previous run) holds 443 or 80; set `PORT=` / `CA_PORT=` (e.g. `PORT=8443 CA_PORT=8080 ./run.sh`). macOS lets a normal user bind ports below 1024 only on all interfaces, so `BIND=127.0.0.1` with port 443/80 needs a high port instead.

@@ -8,7 +8,7 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from webstudio.app import create_app
+from imageatelier.app import create_app
 
 from conftest import StubEngine
 

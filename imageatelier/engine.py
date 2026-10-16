@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from webstudio import models, serverlog
+from imageatelier import models, serverlog
 
 log = logging.getLogger(__name__)
 
@@ -499,7 +499,7 @@ class Engine:
                 return
             self._stopping = False
             self._worker_running = True
-            self._thread = threading.Thread(target=self._worker, name="webstudio-engine", daemon=True)
+            self._thread = threading.Thread(target=self._worker, name="imageatelier-engine", daemon=True)
             self._thread.start()
 
     def stop(self, timeout: float | None = None) -> None:
@@ -1236,7 +1236,7 @@ class Engine:
         """
         from PIL import Image
 
-        from webstudio import sizes
+        from imageatelier import sizes
 
         def dims(path: str) -> tuple[int, int]:
             with Image.open(path) as im:

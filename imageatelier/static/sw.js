@@ -1,7 +1,7 @@
 // Service worker: app shell is precached (stale-while-revalidate); /api/* is network-first; the SSE stream is never touched.
 const VERSION = "v17";
-const SHELL_CACHE = `webstudio-shell-${VERSION}`;
-const API_CACHE = `webstudio-api-${VERSION}`;
+const SHELL_CACHE = `imageatelier-shell-${VERSION}`;
+const API_CACHE = `imageatelier-api-${VERSION}`;
 const SHELL = [
   "/", "/style.css", "/manifest.webmanifest",
   "/js/app.js", "/js/refs.js", "/js/cropper.js", "/js/gestures.js", "/js/jobs.js", "/js/imagemodels.js", "/js/api.js", "/js/util.js", "/js/icons.js", "/js/lightbox.js", "/js/settings.js", "/js/state.js", "/js/styles.js",

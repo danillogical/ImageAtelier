@@ -9,7 +9,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from webstudio import models
+from imageatelier import models
 
 log = logging.getLogger(__name__)
 

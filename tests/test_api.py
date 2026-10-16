@@ -1,4 +1,4 @@
-"""WebStudio API tests, written against API.md (the contract), with a stub engine."""
+"""ImageAtelier API tests, written against API.md (the contract), with a stub engine."""
 
 from __future__ import annotations
 
@@ -403,7 +403,7 @@ class TestJobs:
         engine.gate.set()
 
     def test_cancel_queued_never_reported_running(self, client, engine, monkeypatch):
-        from webstudio.store import Store
+        from imageatelier.store import Store
 
         orig = Store.discard_run
 

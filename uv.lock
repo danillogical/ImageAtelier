@@ -421,6 +421,42 @@ wheels = [
 ]
 
 [[package]]
+name = "imageatelier"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "huggingface-hub" },
+    { name = "mflux" },
+    { name = "mlx-vlm" },
+    { name = "pillow" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+]
+gui = [
+    { name = "pywebview" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "huggingface-hub", specifier = ">=1.1.6,<2.0" },
+    { name = "mflux", url = "https://github.com/vanch007/mflux/archive/3d494b7866a221213a3eedb5ae6b995556564960.tar.gz" },
+    { name = "mlx-vlm", specifier = ">=0.7.4" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "pywebview", marker = "extra == 'gui'", specifier = ">=5" },
+    { name = "uvicorn", extras = ["standard"] },
+]
+provides-extras = ["dev", "gui"]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1710,39 +1746,3 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/a1/b8ad6c17f8e75ba2215422fffe0d7f0c4b690dcff1c47c0473db0d253d51/websockets-17.2-cp312-cp312-win_arm64.whl", hash = "sha256:63499fc49efe48bccc2fca40723bc7adb198866cbe159093dd979905316994b6", size = 218457, upload-time = "2026-10-03T14:53:52.938Z" },
     { url = "https://files.pythonhosted.org/packages/8a/58/835cd51934d6780fa586f275b5d9901eead6d81569b4343b3767cdbaae4c/websockets-17.2-py3-none-any.whl", hash = "sha256:6aa59f0ef92e796b2db6f5f26550c4713c0e4036899fadf02f55e2ed4db0b7ae", size = 211883, upload-time = "2026-10-03T14:56:51.898Z" },
 ]
-
-[[package]]
-name = "webstudio"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "huggingface-hub" },
-    { name = "mflux" },
-    { name = "mlx-vlm" },
-    { name = "pillow" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-]
-gui = [
-    { name = "pywebview" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "huggingface-hub", specifier = ">=1.1.6,<2.0" },
-    { name = "mflux", url = "https://github.com/vanch007/mflux/archive/3d494b7866a221213a3eedb5ae6b995556564960.tar.gz" },
-    { name = "mlx-vlm", specifier = ">=0.7.4" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "pywebview", marker = "extra == 'gui'", specifier = ">=5" },
-    { name = "uvicorn", extras = ["standard"] },
-]
-provides-extras = ["dev", "gui"]

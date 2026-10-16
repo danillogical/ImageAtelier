@@ -133,7 +133,7 @@ class TestWrapping:
 class TestFinalizeAlpha:
     @pytest.fixture
     def fa(self):
-        from webstudio.engine import finalize_alpha
+        from imageatelier.engine import finalize_alpha
         return finalize_alpha
 
     @staticmethod
@@ -184,7 +184,7 @@ class TestFinalizeAlpha:
 @pytest.fixture
 def eng(monkeypatch, tmp_path):
     pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
+    from imageatelier import engine as eng_mod
 
     patch_parts(monkeypatch)
     monkeypatch.setattr(eng_mod, "gpu_utilization", lambda: 0)

@@ -1,4 +1,4 @@
-"""webstudio.gui launcher: starts the server child, opens the window, stops the child (pywebview faked)."""
+"""imageatelier.gui launcher: starts the server child, opens the window, stops the child (pywebview faked)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from webstudio import gui
+from imageatelier import gui
 
 LISTENER = (
     "import socket, time\n"

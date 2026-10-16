@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.webstudio.server</string>
+  <string>com.imageatelier.server</string>
   <key>ProgramArguments</key>
   <array>
     <string>__ROOT__/run.sh</string>

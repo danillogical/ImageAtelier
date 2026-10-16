@@ -14,9 +14,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from webstudio import models
-from webstudio.app import create_app
-from webstudio.engine import EngineBusy
+from imageatelier import models
+from imageatelier.app import create_app
+from imageatelier.engine import EngineBusy
 
 from conftest import StubEngine, new_project, submit, wait_until
 from test_serialization import h, wait_state  # noqa: F401 - fixtures: real Engine with stubbed loaders
@@ -79,8 +79,8 @@ SHARED = b"identical-shard-bytes-" + b"z" * 500
 def cache(monkeypatch, tmp_path):
     root = tmp_path / "hf"
     root.mkdir()
-    monkeypatch.setenv("WEBSTUDIO_HF_CACHE", str(root))
-    monkeypatch.setenv("WEBSTUDIO_MODELS_DIR", str(tmp_path / "models"))
+    monkeypatch.setenv("IMAGEATELIER_HF_CACHE", str(root))
+    monkeypatch.setenv("IMAGEATELIER_MODELS_DIR", str(tmp_path / "models"))
     return FakeCache(root)
 
 

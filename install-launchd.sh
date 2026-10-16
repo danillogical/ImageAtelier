@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Keep WebStudio running at login via launchd.
+# Keep ImageAtelier running at login via launchd.
 #   ./install-launchd.sh             install (or reinstall) and start
 #   ./install-launchd.sh --uninstall stop and remove
 #   ./install-launchd.sh --dry-run   render the plist to a temp file and lint it; changes nothing
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$PWD"
-LABEL=com.webstudio.server
+LABEL=com.imageatelier.server
 DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 
@@ -19,9 +19,12 @@ case "${1:-}" in
   --uninstall)
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null && echo "stopped $LABEL" || echo "$LABEL was not loaded"
     rm -f "$DEST"; echo "removed $DEST"
+    # Also clean up the pre-rename WebStudio agent so an upgrade leaves nothing behind.
+    launchctl bootout "$DOMAIN/com.webstudio.server" 2>/dev/null && echo "stopped com.webstudio.server" || true
+    rm -f "$HOME/Library/LaunchAgents/com.webstudio.server.plist"
     ;;
   --dry-run)
-    out="$(mktemp -t webstudio-plist).plist"
+    out="$(mktemp -t imageatelier-plist).plist"
     render "$out"; echo "rendered to $out"
     ;;
   "")

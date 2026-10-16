@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from webstudio.app import create_app
+from imageatelier.app import create_app
 
 from conftest import new_project
 from test_api import parse_sse
@@ -318,7 +318,7 @@ def test_job_log_has_steps_and_pause_resume(h, api):
 
 class TestServerLog:
     def _fill(self, n):
-        lg = logging.getLogger("webstudio.logprobe")
+        lg = logging.getLogger("imageatelier.logprobe")
         for i in range(n):
             lg.info("probe line %d", i)
 
@@ -373,7 +373,7 @@ def test_log_events_to_all_and_serverlog_only_when_opted_in(h, tmp_path):
                 await asyncio.sleep(0.3)
                 await c.post(f"/api/jobs/{jid}/pause")
                 await asyncio.sleep(0.3)
-                logging.getLogger("webstudio.logprobe").info("server-only-marker-42")
+                logging.getLogger("imageatelier.logprobe").info("server-only-marker-42")
                 await asyncio.sleep(1.5)  # the server-log flusher batches every ~0.5 s
                 await c.post(f"/api/jobs/{jid}/resume")
                 h.release.set()

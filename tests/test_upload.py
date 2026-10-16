@@ -10,8 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
-from webstudio import sizes
-from webstudio.app import create_app
+from imageatelier import sizes
+from imageatelier.app import create_app
 
 from conftest import StubEngine, do_run, new_project, submit, wait_run, wait_until
 from test_enhance import collect_events

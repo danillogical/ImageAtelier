@@ -12,8 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from webstudio import models
-from webstudio.app import create_app
+from imageatelier import models
+from imageatelier.app import create_app
 
 from conftest import StubEngine, new_project, wait_until
 from test_heretic import live, models_dir  # noqa: F401 - fixtures: real Engine via create_app, loaders stubbed
@@ -48,8 +48,8 @@ def dirs(monkeypatch, tmp_path):
     hf, md = tmp_path / "hf", tmp_path / "models"
     hf.mkdir()
     md.mkdir()
-    monkeypatch.setenv("WEBSTUDIO_HF_CACHE", str(hf))
-    monkeypatch.setenv("WEBSTUDIO_MODELS_DIR", str(md))
+    monkeypatch.setenv("IMAGEATELIER_HF_CACHE", str(hf))
+    monkeypatch.setenv("IMAGEATELIER_MODELS_DIR", str(md))
     return SimpleNamespace(hf=hf, models=md)
 
 
@@ -255,7 +255,7 @@ class TestCompose:
 @pytest.fixture
 def composing(monkeypatch, dirs, tmp_path):
     pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
+    from imageatelier import engine as eng_mod
 
     install_hf_image(dirs)
     install_hf_te(dirs)

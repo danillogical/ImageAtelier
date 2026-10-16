@@ -19,9 +19,9 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictBool, StrictInt
 
-from webstudio import ca, models, settings as settings_mod, sizes, styles
-from webstudio.engine import EngineBusy, InvalidTransition, UnknownJob
-from webstudio.store import Store, default_data_dir
+from imageatelier import ca, models, settings as settings_mod, sizes, styles
+from imageatelier.engine import EngineBusy, InvalidTransition, UnknownJob
+from imageatelier.store import Store, default_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
     store = Store(data_dir or default_data_dir())
     settings = settings_mod.SettingsStore(store.root / "settings.json")
     if engine is None:
-        from webstudio.engine import Engine
+        from imageatelier.engine import Engine
 
         def provider():
             s = settings.get()
@@ -479,7 +479,7 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
             loop.call_soon(events.put_nowait, None)  # FIFO after any events the worker just queued
             await consumer
 
-    app = FastAPI(title="WebStudio", lifespan=lifespan)
+    app = FastAPI(title="ImageAtelier", lifespan=lifespan)
     app.state.store, app.state.settings, app.state.engine = store, settings, engine
 
     @app.exception_handler(RequestValidationError)

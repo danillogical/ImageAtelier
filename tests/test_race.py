@@ -19,7 +19,7 @@ SAVE_DELAY = 0.6
 
 
 def slow_save(monkeypatch):
-    from webstudio.store import Store
+    from imageatelier.store import Store
 
     orig = Store.save_run
 

@@ -24,7 +24,7 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "Checking platform"
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
-  echo "error: WebStudio needs macOS on Apple Silicon (arm64); this is $(uname -s)/$(uname -m)." >&2
+  echo "error: ImageAtelier needs macOS on Apple Silicon (arm64); this is $(uname -s)/$(uname -m)." >&2
   exit 1
 fi
 echo "macOS $(sw_vers -productVersion), arm64: ok"
@@ -92,7 +92,7 @@ if [[ "$MODEL" != none ]]; then
   step "Downloading model: $MODEL (this can take a while)"
   .venv/bin/python - "$MODEL" <<'PY'
 import time
-from webstudio import models
+from imageatelier import models
 
 parts = [("image", "official-8bit", models.image_status, models.start_image_download, models.is_image_downloading),
          ("text encoder", "heretic-8bit", models.te_status, models.start_te_download, models.is_te_downloading)]

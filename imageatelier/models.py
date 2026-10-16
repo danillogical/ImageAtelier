@@ -20,7 +20,7 @@ from huggingface_hub.errors import LocalEntryNotFoundError
 log = logging.getLogger(__name__)
 
 # Overrides the HF hub cache directory; unset means huggingface_hub's default (honours HF_HOME / HF_HUB_CACHE).
-CACHE_ENV = "WEBSTUDIO_HF_CACHE"
+CACHE_ENV = "IMAGEATELIER_HF_CACHE"
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ TEXT_ENCODERS: dict[str, TextEncoder] = {
 }
 DEFAULT_IMAGE_MODEL = "official-8bit"
 DEFAULT_TEXT_ENCODER = "heretic-8bit"
-COMPOSE_DIR_ENV = "WEBSTUDIO_COMPOSE_DIR"
+COMPOSE_DIR_ENV = "IMAGEATELIER_COMPOSE_DIR"
 COMPOSE_IMAGE_PARTS = ("transformer", "vae", "processor")
 COMPOSE_OPTIONAL_PARTS = ("model_index.json", "scheduler")
 
@@ -197,7 +197,7 @@ def default_compose_dir() -> Path:
     env = os.environ.get(COMPOSE_DIR_ENV)
     if env:
         return Path(env).expanduser()
-    from webstudio.store import default_data_dir
+    from imageatelier.store import default_data_dir
 
     return default_data_dir() / "compose"
 
@@ -583,7 +583,7 @@ PE_MODELS["i2i-heretic-8bit"] = PEModel(
 PE_HERETIC = "heretic-8bit"  # the "quant" part of the model name / manager key for the Heretic rewriters (T2I and I2I)
 PE_HERETIC_T2I = PE_HERETIC  # old name
 PE_SYSTEM_PROMPT_FILE = "system_prompt.txt"
-MODELS_DIR_ENV = "WEBSTUDIO_MODELS_DIR"
+MODELS_DIR_ENV = "IMAGEATELIER_MODELS_DIR"
 
 
 def models_dir() -> Path:

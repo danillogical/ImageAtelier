@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "webstudio"
+name = "imageatelier"
 version = "0.1.0"
-description = "Home-network web studio for Qwen-Image-2.1-Heretic MLX image generation and editing."
+description = "ImageAtelier: a home studio for Qwen-Image-2.1 MLX image generation and editing on Apple Silicon, in a native Mac window or on your home network."
 license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -25,7 +25,7 @@ url = "https://pypi.org/simple"
 default = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["webstudio"]
+packages = ["imageatelier"]
 
 [project.optional-dependencies]
 dev = [

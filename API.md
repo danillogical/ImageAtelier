@@ -1,4 +1,4 @@
-# WebStudio HTTP API
+# ImageAtelier HTTP API
 
 A PROJECT is one image lineage. The first prompt in a project is text-to-image; every later prompt EDITS the
 project's *current* image. Every run saves its prompt, settings and image.
@@ -56,7 +56,7 @@ POST   /api/projects/{pid}/enhance {prompt, thinking?, quant?, language?}
        POST /runs additionally accepts an optional `enhanced_from` (the user's original text); stored in the run json (null otherwise).
 GET    /api/model                        -> {state: "loading"|"loaded"|"unloaded", key: [...]|null}   (the one resident model)
 POST   /api/models/pe/{name}/download    -> 202 {started: bool}   (name e.g. "t2i-8bit"; 404 if unknown)
-GET    /                                 -> static index.html ; other static paths served from webstudio/static
+GET    /                                 -> static index.html ; other static paths served from imageatelier/static
 ```
 
 Image URLs inside JSON use these routes.
@@ -165,7 +165,7 @@ Image URLs inside JSON use these routes.
 - **Heretic rewriters (local models).** `GET /api/models` also lists `t2i-heretic-8bit` and `i2i-heretic-8bit`:
   `{kind:"pe", name:"i2i-heretic-8bit", mode:"i2i", quant:"8bit", variant:"heretic", source:"local", approx_gb:10.4, state, ...}`
   (official entries carry `variant:"official"`, `source:"hf"`). Each is an on-disk mlx-vlm folder,
-  `Qwen-Image-2.1-PE-{T2I,I2I}-Heretic-MLX-8bit/` under `$WEBSTUDIO_MODELS_DIR` (default `<repo>/models`), with
+  `Qwen-Image-2.1-PE-{T2I,I2I}-Heretic-MLX-8bit/` under `$IMAGEATELIER_MODELS_DIR` (default `<repo>/models`), with
   its own `system_prompt.txt`. `state` is `ready` when the folder has `config.json`, every shard named in
   `model.safetensors.index.json`, and `system_prompt.txt`; otherwise `not_installed` (with a `hint`). They cannot be
   downloaded: `POST /api/models/pe/{name}/download` is `409` with the copy instructions.
@@ -180,7 +180,7 @@ Image URLs inside JSON use these routes.
 - **Which rewriter ran.** Enhance job snapshots carry `rewriter` (`"official-8bit"`, `"heretic-8bit"`;
   set once the job starts running) and the terminal `result` includes `rewriter` too.
 - **Deleting a project** cancels its jobs in every non-terminal state (queued, held, loading, running, paused) and removes its folder.
-- **Data dir:** `$WEBSTUDIO_DATA`, default `<repo>/data`: `settings.json`, `projects/<pid>/project.json`,
+- **Data dir:** `$IMAGEATELIER_DATA`, default `<repo>/data`: `settings.json`, `projects/<pid>/project.json`,
   `projects/<pid>/runs/<NNNN>.png|.json|.thumb.webp` (thumbnail max 384 px).
 
 ## 4-bit removal and settings migration
@@ -196,12 +196,12 @@ A generation needs three pieces, kept as separate downloads so they can be mixed
 - **Image model** (`kind:"image"`, setting `image_model`, now only `official-8bit`): the transformer, VAE and processor,
   plus the optional turbo add-on (`turbo_lora_ready`). Downloaded from the Hub (`POST /api/models/image/{name}/download`).
 - **Text encoder** (`kind:"text_encoder"`, setting `text_encoder`): `heretic-8bit` (default; from the Hub, downloadable) or
-  `official-8bit` (a converted local folder under `$WEBSTUDIO_MODELS_DIR`, `source:"local"`, state `not_installed` with a `hint`
+  `official-8bit` (a converted local folder under `$IMAGEATELIER_MODELS_DIR`, `source:"local"`, state `not_installed` with a `hint`
   until copied; it cannot be downloaded, so its download endpoint is 409).
 - **Turbo** is a per-run mode (`turbo` setting / request field), not a model.
 
 When a job runs, the engine *composes* a folder that symlinks the chosen image part and text encoder together (under
-`$WEBSTUDIO_COMPOSE_DIR`) and loads that, so switching the text encoder only re-links and reloads; nothing is copied.
+`$IMAGEATELIER_COMPOSE_DIR`) and loads that, so switching the text encoder only re-links and reloads; nothing is copied.
 The resident model key is `["image", image_model, text_encoder, turbo]`, and results and snapshots carry `image_model`,
 `text_encoder` and `turbo`; run JSON records them too. Pre-parts files (`variant`) are migrated on load: `variant` is dropped, and
 `image_model`/`text_encoder` default to `official-8bit`/`heretic-8bit` (the pair the old single download contained).

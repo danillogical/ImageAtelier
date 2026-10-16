@@ -412,7 +412,7 @@ class TestRefsEvent:
 @pytest.fixture
 def eng(monkeypatch, tmp_path):
     pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
+    from imageatelier import engine as eng_mod
 
     patch_parts(monkeypatch)
     monkeypatch.setattr(eng_mod, "gpu_utilization", lambda: 0)

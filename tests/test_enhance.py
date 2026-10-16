@@ -372,8 +372,8 @@ class TestEnhanceSse:
 @pytest.fixture
 def real_engine(monkeypatch, tmp_path):
     mlx_vlm = pytest.importorskip("mlx_vlm")
-    from webstudio import engine as eng_mod
-    from webstudio import models
+    from imageatelier import engine as eng_mod
+    from imageatelier import models
 
     not_ready: set = set()
     loads: list[tuple] = []

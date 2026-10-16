@@ -1,8 +1,8 @@
 """Serving the local CA certificate so phones can trust the HTTPS server.
 
 The main app exposes /ca (instructions) and /ca/rootCA.crt (the public root certificate only, never the key).
-When WEBSTUDIO_CA_PORT is set, a second plain-HTTP listener runs too. By default it serves the full app (no PWA
-install over plain HTTP, but everything else works with no CA setup); WEBSTUDIO_HTTP_MODE=ca restricts it to /ca
+When IMAGEATELIER_CA_PORT is set, a second plain-HTTP listener runs too. By default it serves the full app (no PWA
+install over plain HTTP, but everything else works with no CA setup); IMAGEATELIER_HTTP_MODE=ca restricts it to /ca
 plus a redirect to the HTTPS URL. Either way a device can fetch the CA before it trusts the HTTPS certificate.
 """
 
@@ -27,7 +27,7 @@ PAGE = Path(__file__).resolve().parent / "static" / "ca.html"
 
 
 def certs_dir() -> Path:
-    env = os.environ.get("WEBSTUDIO_CERTS")
+    env = os.environ.get("IMAGEATELIER_CERTS")
     return Path(env).expanduser() if env else ROOT / "certs"
 
 
@@ -43,7 +43,7 @@ async def crt(request: Request):
     f = root_ca()
     if not f.is_file():
         return PlainTextResponse("No CA certificate yet: run ./setup.sh on the server.", status_code=404)
-    return FileResponse(f, media_type="application/x-x509-ca-cert", filename="WebStudio-CA.crt")
+    return FileResponse(f, media_type="application/x-x509-ca-cert", filename="ImageAtelier-CA.crt")
 
 
 ROUTES = [Route("/ca", page), Route("/ca/", page), Route("/ca/rootCA.crt", crt)]
@@ -75,7 +75,7 @@ class PlainListener:
         # app given: serve the full app over plain HTTP too (same instance, so engine/queue/events are shared; its
         # lifespan already ran on the HTTPS server). Otherwise: only /ca plus a redirect to HTTPS.
         target = app if app is not None else plain_app(https_port)
-        config = uvicorn.Config(target, host=os.environ.get("WEBSTUDIO_BIND", "0.0.0.0"), port=port, log_config=None, log_level="warning", lifespan="off")
+        config = uvicorn.Config(target, host=os.environ.get("IMAGEATELIER_BIND", "0.0.0.0"), port=port, log_config=None, log_level="warning", lifespan="off")
         self.port = port
         self.server = _EmbeddedServer(config)
         self.task: asyncio.Task | None = None
@@ -103,9 +103,9 @@ class PlainListener:
 
 
 def listener_from_env(app=None) -> PlainListener | None:
-    # WEBSTUDIO_HTTP_MODE: "app" (default) serves the whole app on the HTTP port; "ca" serves only /ca + a redirect.
-    port = os.environ.get("WEBSTUDIO_CA_PORT")
+    # IMAGEATELIER_HTTP_MODE: "app" (default) serves the whole app on the HTTP port; "ca" serves only /ca + a redirect.
+    port = os.environ.get("IMAGEATELIER_CA_PORT")
     if not port:
         return None
-    full = os.environ.get("WEBSTUDIO_HTTP_MODE", "app") == "app"
-    return PlainListener(int(port), int(os.environ.get("WEBSTUDIO_HTTPS_PORT", "443")), app if full else None)
+    full = os.environ.get("IMAGEATELIER_HTTP_MODE", "app") == "app"
+    return PlainListener(int(port), int(os.environ.get("IMAGEATELIER_HTTPS_PORT", "443")), app if full else None)
