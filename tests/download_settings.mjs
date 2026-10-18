@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-async function settings(state, { confirm = true, q8 = "not_converted" } = {}) {
+async function settings(state, { confirm = true, q8 = "not_converted", custom = [], networkInfo = null } = {}) {
   const calls = [];
   const dialogs = [];
   const body = { children: [], append(node) { this.children.push(node); } };
@@ -14,24 +14,34 @@ async function settings(state, { confirm = true, q8 = "not_converted" } = {}) {
     window: { addEventListener: (name, fn) => events.set(name, fn), dispatchEvent: (event) => events.get(event.type)?.(event) },
     document: { body, addEventListener() {}, removeEventListener() {} },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
-    requestAnimationFrame: (fn) => fn(), setTimeout,
+    requestAnimationFrame: (fn) => fn(), setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timer.unref(); return timer; }, clearTimeout,
   });
-  const S = { settings: { model_suite: "q8" }, models: [] };
+  const S = { settings: { model_suite: "q8", custom_image: "", custom_text_encoder: "" }, models: [] };
   const rows = [{ kind: "suite", name: "bf16", label: "BF16", state, bytes_done: 100, bytes_total: 200, retry_in: 5 },
     { kind: "suite", name: "q8", label: "Q8", state: q8, can_convert: state === "ready" }];
-  const h = (tag, attrs, ...children) => ({ tag, attrs, children: children.flat().filter(Boolean), classList: { add() {}, remove() {} } });
-  const api = async (method, path) => {
-    calls.push([method, path]);
+  const h = (tag, attrs, ...children) => ({ tag, attrs, children: children.flat().filter(Boolean), classList: { add() {}, remove() {} }, remove() {} });
+  const api = async (method, path, payload) => {
+    calls.push([method, path, payload]);
+    if (method === "PUT" && path === "/settings") { Object.assign(S.settings, payload); return S.settings; }
+    if (method === "DELETE" && path.startsWith("/custom-models/")) {
+      const id = path.split("/").at(-1);
+      const i = custom.findIndex((r) => r.id === id);
+      custom.splice(i, 1);
+      for (const key of ["custom_image", "custom_text_encoder", "custom_pe_t2i", "custom_pe_i2i"]) {
+        if (S.settings[key] === id) S.settings[key] = "";
+      }
+      return { deleted: true };
+    }
     if (method === "DELETE") {
       rows.find((r) => path === `/models/${r.name}`).state = "not_downloaded";
       return { deleted: true, freed_bytes: 100 };
     }
-    return path === "/models" ? rows : path === "/settings" ? S.settings : {};
+    return path === "/models" ? rows : path === "/settings" ? S.settings : path === "/custom-models" ? custom : path === "/network" ? networkInfo : {};
   };
   const mocks = {
     "./api.js": { api }, "./state.js": { S }, "./icons.js": { icon: () => null },
     "./util.js": { h, fill: (node, ...children) => { node.children = children; }, toast() {}, fmtBytes: String,
-      confirmDialog: async (options) => { dialogs.push(options); return confirm; } },
+      copyText: async () => true, confirmDialog: async (options) => { dialogs.push(options); return confirm; } },
   };
   const mod = new vm.SourceTextModule(await readFile(new URL("../imageatelier/static/js/settings.js", import.meta.url), "utf8"), { context });
   await mod.link(async (name) => {
@@ -42,10 +52,14 @@ async function settings(state, { confirm = true, q8 = "not_converted" } = {}) {
   });
   await mod.evaluate();
   await mod.namespace.openSettings();
-  const all = [];
-  const visit = (node) => { if (node && typeof node === "object") { all.push(node); node.children?.forEach(visit); } };
-  visit(body);
-  return { all, calls, dialogs, rows, S };
+  function nodes() {
+    const all = [];
+    const visit = (node) => { if (node && typeof node === "object") { all.push(node); node.children?.forEach(visit); } };
+    visit(body);
+    return all;
+  }
+  return { get all() { return nodes(); }, calls, dialogs, rows, S };
+
 }
 
 for (const name of ["bf16", "q8"]) {
@@ -89,3 +103,73 @@ for (const [state, label, action] of [["downloading", "Pause", "pause"], ["retry
     assert.ok(calls.some(([method, path]) => method === "POST" && path === `/models/bf16/${action}`));
   });
 }
+
+
+test("custom component selection persists independently of the base suite", async () => {
+  const custom = [{ id: "custom-1111111111111111", kind: "image", label: "Anime", state: "ready" }];
+  const { all, calls, S } = await settings("ready", { q8: "ready", custom });
+  const select = all.find((n) => n.attrs?.["aria-label"] === "Anime");
+  await select.attrs.onclick();
+  assert.equal(S.settings.custom_image, custom[0].id);
+  assert.equal(S.settings.model_suite, "q8");
+  assert.ok(calls.some(([method, path, payload]) => method === "PUT" && path === "/settings" && payload.custom_image === custom[0].id));
+});
+
+test("custom preparation requires a ready selected base and disables suite deletion", async () => {
+  const custom = [{ id: "custom-1111111111111111", kind: "image", label: "Anime", state: "not_prepared" }];
+  let result = await settings("ready", { q8: "not_converted", custom });
+  assert.equal(result.all.find((n) => n.attrs?.["aria-label"] === "Prepare Anime").attrs.disabled, true);
+  result = await settings("ready", { q8: "ready", custom });
+  assert.equal(result.all.find((n) => n.attrs?.["aria-label"] === "Prepare Anime").attrs.disabled, false);
+  custom[0].state = "preparing";
+  result = await settings("ready", { q8: "ready", custom });
+  assert.equal(result.all.find((n) => n.attrs?.["aria-label"] === "Delete Q8").attrs.disabled, true);
+});
+
+
+for (const [kind, key, title] of [["image", "custom_image", "Image Transformers"],
+  ["text_encoder", "custom_text_encoder", "Text and Vision Encoders"],
+  ["pe_t2i", "custom_pe_t2i", "T2I Prompt Enhancer"], ["pe_i2i", "custom_pe_i2i", "I2I Prompt Enhancer"]]) {
+  test(`${title} allows one choice or none`, async () => {
+    const custom = [1, 2].map((n) => ({ id: `custom-${String(n).repeat(16)}`, kind, label: `Model ${n}`, state: "ready" }));
+    const result = await settings("ready", { q8: "ready", custom });
+    const choice = (label) => result.all.find((n) => n.attrs?.["aria-label"] === label && n.attrs?.role === "radio");
+    await choice("Model 1").attrs.onclick();
+    assert.equal(result.S.settings[key], custom[0].id);
+    await choice("Model 2").attrs.onclick();
+    assert.equal(result.S.settings[key], custom[1].id);
+    assert.equal(choice("Model 1").attrs["aria-checked"], "false");
+    assert.equal(choice("Model 2").attrs["aria-checked"], "true");
+    await choice("Model 2").attrs.onclick();
+    assert.equal(result.S.settings[key], "");
+    assert.equal(choice("Model 2").attrs["aria-checked"], "false");
+    assert.ok(result.all.some((n) => n.attrs?.role === "radiogroup" && n.attrs?.["aria-label"] === title));
+    assert.ok(!result.all.some((n) => n.tag === "select" || n.tag === "p"));
+  });
+}
+
+test("deleting a selected custom card clears its selection", async () => {
+  const custom = [{ id: "custom-1111111111111111", kind: "image", label: "Anime", state: "ready" }];
+  const result = await settings("ready", { q8: "ready", custom });
+  await result.all.find((n) => n.attrs?.["aria-label"] === "Anime").attrs.onclick();
+  await result.all.find((n) => n.attrs?.["aria-label"] === "Delete Anime").attrs.onclick();
+  assert.equal(result.S.settings.custom_image, "");
+  assert.equal(custom.length, 0);
+  assert.equal(result.dialogs.length, 1);
+});
+
+
+test("network toggles independently persist API and UI listeners", async () => {
+  const networkInfo = { api_url: "http://laptop.local:8001", ui_url: "http://laptop.local:8002", access_key: "test-key" };
+  const result = await settings("ready", { q8: "ready", networkInfo });
+  const toggle = (name) => result.all.find((n) => n.attrs?.["aria-label"] === name && n.attrs?.role === "switch");
+  await toggle("Worlds API").attrs.onchange({ target: { checked: true } });
+  assert.equal(result.S.settings.network_api_enabled, true);
+  assert.ok(!result.S.settings.network_ui_enabled);
+  await toggle("Network UI").attrs.onchange({ target: { checked: true } });
+  assert.equal(result.S.settings.network_ui_enabled, true);
+  await toggle("Worlds API").attrs.onchange({ target: { checked: false } });
+  assert.equal(result.S.settings.network_api_enabled, false);
+  assert.equal(result.S.settings.network_ui_enabled, true);
+  assert.ok(result.all.some((n) => n.attrs?.type === "password" && n.attrs?.readOnly));
+});

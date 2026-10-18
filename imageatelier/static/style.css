@@ -508,3 +508,26 @@ small { font-size: 12.5px; }
 :root .suite-error { flex-basis: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .model-card:has(.suite-choice) { align-items: center; flex-wrap: wrap; }
 .model-card:has(.suite-choice) > .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Custom model groups use the same choice cards as the suite list. */
+.custom-models-heading { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.custom-models-heading h4 { flex: 1; margin: 0; }
+.custom-models-heading > .btn { flex-shrink: 0; }
+.custom-model-category + .custom-model-category { margin-top: 22px; }
+.custom-model-category h5 { margin: 0 0 10px; color: var(--text); font: inherit; font-weight: 600; }
+.custom-model-card .grow { min-width: 0; }
+.custom-model-card .rs-title { overflow-wrap: anywhere; }
+.custom-model-actions { display: flex; align-items: center; flex-shrink: 0; gap: 8px; }
+.custom-model-empty { display: block; padding: 10px 0; }
+@media (max-width: 480px) {
+  .custom-model-card .suite-choice { flex-basis: calc(100% - 20px); }
+  .custom-model-actions { margin-left: auto; }
+}
+
+.network-setting { display: flex; align-items: center; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.network-setting .grow { min-width: 0; }
+.network-setting small { display: block; margin-top: 4px; }
+.network-url { display: block; margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.network-key-row { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; }
+.network-key-row input { flex: 1; min-width: 0; width: 0; }
+.switch input:disabled + .knob { opacity: .45; }

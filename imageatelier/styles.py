@@ -5,10 +5,11 @@ from __future__ import annotations
 NONE_ID = "none"
 CUSTOM_ID = "custom"
 CUSTOM_MAX_CHARS = 300
+_ANIME_PREFIX = "An anime illustration of "
 
 
-def _p(id: str, label: str, description: str, snippet: str, keep: str) -> dict:
-    return {"id": id, "label": label, "description": description, "snippet": snippet, "keep": keep}
+def _p(id: str, label: str, description: str, snippet: str, keep: str, suffix: str = "") -> dict:
+    return {"id": id, "label": label, "description": description, "snippet": snippet, "keep": keep, "suffix": suffix}
 
 
 PRESETS: list[dict] = [
@@ -20,13 +21,15 @@ PRESETS: list[dict] = [
        "in a cinematic style, like a film still with dramatic lighting, shallow depth of field and rich color grading",
        "Keep the cinematic film-still style."),
     _p("anime", "Anime / cel-shaded", "Clean line art and flat, cel-shaded colors.",
-       "in a cel-shaded anime illustration style, clean line art, flat colors",
-       "Keep the cel-shaded anime illustration style."),
+       _ANIME_PREFIX,
+       "Keep the cel-shaded anime illustration style.",
+       "Clean line art, flat colors and cel shading."),
     _p("stylized-anime", "Stylized anime", "Heavy black ink, hard shadows and wild perspective, like a cult action anime film.",
-       "in a stylized anime film style with extremely heavy black ink outlines, large solid-black shadow shapes, exaggerated "
+       _ANIME_PREFIX,
+       "Keep the stylized anime style with heavy black ink outlines and solid-black shadows.",
+       "Extremely heavy black ink outlines, large solid-black shadow shapes, exaggerated "
        "perspective and foreshortening, angular hyper-dynamic poses, saturated high-contrast colors and gritty hand-drawn "
-       "texture, like a 2000s cult action anime",
-       "Keep the stylized anime style with heavy black ink outlines and solid-black shadows."),
+       "texture, like a 2000s cult action anime."),
     _p("hand-drawn", "Hand-drawn animation", "Classic 2D animation cels with soft pencil outlines and painted backgrounds.",
        "in a classic hand-drawn 2D animation style, like a 1990s animated feature cel, soft pencil-textured outlines, gouache-painted background",
        "Keep the hand-drawn 2D animation style."),
@@ -104,7 +107,7 @@ def resolve(style) -> dict:
     """`{id, label, custom?, snippet, keep}` for a stored style."""
     s = normalize(style)
     preset = BY_ID[s["id"]]
-    out = {"id": s["id"], "label": preset["label"], "snippet": preset["snippet"], "keep": preset["keep"]}
+    out = {"id": s["id"], "label": preset["label"], "snippet": preset["snippet"], "keep": preset["keep"], "suffix": preset["suffix"]}
     if s["id"] == CUSTOM_ID:
         out["custom"] = s["custom"]
         out["snippet"] = s["custom"]
@@ -123,21 +126,30 @@ def _is_edit(mode: str) -> bool:
 
 
 def compose(prompt: str, style, mode: str, *, skip: bool = False) -> str:
-    """The prompt with the style added: new image `<prompt>. <snippet>`, edit `<prompt>. <keep>` (whitespace trimmed and one trailing
-    period of the prompt dropped). Unchanged for style none or `skip`."""
+    """Put the style first, including on rewritten prompts; avoid repeating an existing prefix.
+
+    `skip` is retained for callers that used to trust an enhancer's style placement. A rewrite
+    still needs its explicit prefix unless it already starts with that prefix.
+    """
     r = resolve(style)
     add = r["keep"] if _is_edit(mode) else r["snippet"]
-    if skip or not add:
+    if not add:
         return prompt
     p = prompt.strip()
-    if p.endswith("."):
-        p = p[:-1]
-    return f"{p}. {add}"
-
-
-def enhancer_hint(style, mode: str) -> str:
-    """Text appended to the user's prompt for the prompt enhancer: `\\n\\nArt style: <snippet>` (new image) or `\\n\\n<keep>` (edit)."""
-    r = resolve(style)
+    prefix = add if r["suffix"] and not _is_edit(mode) else f"{add.rstrip('. ')}. "
+    if p.startswith(prefix):
+        if not _is_edit(mode) and r["suffix"] and r["suffix"] not in p:
+            punctuation = "" if p.endswith((".", "!", "?")) else "."
+            return f"{p}{punctuation} {r['suffix']}"
+        return p
     if _is_edit(mode):
-        return f"\n\n{r['keep']}" if r["keep"] else ""
-    return f"\n\nArt style: {r['snippet']}" if r["snippet"] else ""
+        return f"{add.rstrip('. ')}. {p}"
+    if r["suffix"]:
+        punctuation = "" if p.endswith((".", "!", "?")) else "."
+        return f"{add}{p}{punctuation} {r['suffix']}"
+    return f"{add.rstrip('. ')}. {p}"
+
+
+def enhancer_prompt(prompt: str, style, mode: str) -> str:
+    """Give the enhancer the same style-first input as the image generator."""
+    return compose(prompt, style, mode)

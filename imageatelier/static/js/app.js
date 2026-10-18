@@ -362,8 +362,9 @@ let pickSig = "";
 function renderPicker() {
   if (!elProj.pick || !S.proj || !S.settings) return;
   const suite = S.models.find((m) => m.name === S.settings.model_suite);
-  const ready = suite?.state === "ready";
-  const label = `Qwen-Image-2.1 · ${S.settings.model_suite.toUpperCase()}`;
+  const custom = [S.settings.custom_image, S.settings.custom_text_encoder].filter(Boolean);
+  const ready = suite?.state === "ready" && custom.every((id) => S.customModels?.some((m) => m.id === id && m.state === "ready"));
+  const label = `Qwen-Image-2.1 · ${S.settings.model_suite.toUpperCase()}${custom.length ? " · Custom" : ""}`;
   const sig = JSON.stringify([label, ready, isRO()]);
   if (sig === pickSig) return;
   pickSig = sig;

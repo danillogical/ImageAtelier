@@ -296,6 +296,10 @@ def require_suite(name: str) -> dict[str, Path]:
 def resolve_parts(image_model: str, text_encoder: str, turbo: bool):
     if turbo:
         raise ValueError("Turbo is no longer supported")
+    if image_model.startswith('custom-') or text_encoder.startswith('custom-'):
+        from imageatelier import custom_models
+        root = custom_models.resolve(image_model, text_encoder)
+        return root, root / 'text_encoder', None
     if image_model != text_encoder:
         raise ValueError("Choose a complete suite; model parts cannot be mixed")
     parts = require_suite(suite_for_model(image_model))
@@ -310,6 +314,10 @@ def pe_name(mode: str, quant: str) -> str:
 
 
 def resolve_pe(mode: str, quant: str):
+    if quant.startswith('custom-'):
+        from imageatelier import custom_models
+        root = Path(custom_models.get(quant, f'pe_{mode}', ready=True)['path'])
+        return root, (root / 'system_prompt.txt').read_text(encoding='utf-8')
     pe = PE_MODELS[pe_name(mode, quant)]
     root = require_suite(pe.suite)[mode]
     return root, (root / "system_prompt.txt").read_text(encoding="utf-8")

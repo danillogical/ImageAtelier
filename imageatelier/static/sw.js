@@ -1,5 +1,5 @@
 // Service worker: app shell is precached (stale-while-revalidate); /api/* is network-first; the SSE stream is never touched.
-const VERSION = "v22";
+const VERSION = "v25";
 const SHELL_CACHE = `imageatelier-shell-${VERSION}`;
 const API_CACHE = `imageatelier-api-${VERSION}`;
 const SHELL = [
@@ -27,7 +27,7 @@ async function networkFirst(req) {
     const res = await fetch(req);
     const type = res.headers.get("content-type") || "";
     // Keep JSON and thumbnails for offline browsing; full-size PNGs are too big to hoard.
-    if (res.ok && (type.includes("json") || type.includes("webp"))) {
+    if (res.ok && !res.headers.get("cache-control")?.includes("no-store") && (type.includes("json") || type.includes("webp"))) {
       (await caches.open(API_CACHE)).put(req, res.clone());
     }
     return res;
@@ -57,7 +57,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
-  if (url.pathname === "/api/events" || req.headers.get("accept") === "text/event-stream") return;
+  if (url.pathname === "/api/network" || url.pathname === "/api/events" || req.headers.get("accept") === "text/event-stream") return;
   if (url.pathname.startsWith("/api/")) {
     e.respondWith(networkFirst(req));
   } else {

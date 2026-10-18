@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictBool, StrictInt
 
-from imageatelier import ca, models, suites, settings as settings_mod, sizes, styles
+from imageatelier import custom_models, ca, models, suites, settings as settings_mod, sizes, styles
 from imageatelier.engine import EngineBusy, InvalidTransition, UnknownJob
 from imageatelier.store import Store, default_data_dir
 
@@ -52,12 +52,27 @@ def flatten_parent(src, dst) -> bool:
     return True
 
 
-def wrap_transparent(prompt: str) -> str:
-    """The model-card wording that triggers a transparent background (one trailing period of the user's text is dropped)."""
+_TRANSPARENCY_PREFIX = "This is an RGBA image with transparency. "
+_ANIME_TRANSPARENCY_PREFIX = "an RGBA image with transparency: "
+_TRANSPARENCY_SUFFIX = "The image has alpha channel and the background is transparent."
+
+
+def wrap_transparent(prompt: str, style=None, mode: str = "t2i") -> str:
+    """Keep style first, then transparency wording, subject, and the alpha reminder."""
+    r = styles.resolve(style)
     p = prompt.strip()
     if p.endswith("."):
         p = p[:-1]
-    return f"This is an RGBA image with transparency. {p}. The image has alpha channel and the background is transparent."
+    edit = mode in ("edit", "i2i")
+    add = r["keep"] if edit else r["snippet"]
+    if add:
+        prefix = add if r["suffix"] and not edit else f"{add.rstrip('. ')}. "
+        if p.startswith(prefix):
+            body = p[len(prefix):]
+            if r["suffix"] and not edit:
+                return f"{prefix}{_ANIME_TRANSPARENCY_PREFIX}{body}. {_TRANSPARENCY_SUFFIX}"
+            return f"{prefix}{_TRANSPARENCY_PREFIX}{body}. {_TRANSPARENCY_SUFFIX}"
+    return f"{_TRANSPARENCY_PREFIX}{p}. {_TRANSPARENCY_SUFFIX}"
 
 
 class UploadError(Exception):
@@ -182,6 +197,7 @@ class EnhanceCreate(BaseModel):
 def create_app(engine=None, data_dir=None) -> FastAPI:
     store = Store(data_dir or default_data_dir())
     settings = settings_mod.SettingsStore(store.root / "settings.json")
+    network_settings_lock = asyncio.Lock()
     if engine is None:
         from imageatelier.engine import Engine
 
@@ -458,8 +474,13 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
             await plain.start()
         ticker = asyncio.create_task(download_ticker())
         try:
+            await app.state.network.apply(settings.get())
+        except (OSError, RuntimeError):
+            log.exception("Network listeners could not start; local app is still available")
+        try:
             yield
         finally:
+            await app.state.network.stop()
             if plain:
                 await plain.stop()
             ticker.cancel()
@@ -471,6 +492,19 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
 
     app = FastAPI(title="ImageAtelier", lifespan=lifespan)
     app.state.store, app.state.settings, app.state.engine = store, settings, engine
+    from imageatelier import network
+    app.state.network = network.Network(app, engine, settings, store.root)
+
+    @app.middleware("http")
+    async def protect_legacy_network_ui(request: Request, call_next):
+        if not request.scope.get("imageatelier.network_ui") and not network.loopback(request.client.host if request.client else ""):
+            if not settings.get()["network_ui_enabled"]:
+                return JSONResponse({"detail": "Network UI is disabled"}, status_code=403)
+            if not app.state.network.ui_authorized(request.headers.get("authorization", "")):
+                return JSONResponse({"detail": "ImageAtelier network sign-in required"}, status_code=401,
+                                    headers={"WWW-Authenticate": 'Basic realm="ImageAtelier"'})
+            request.scope["imageatelier.network_ui"] = True
+        return await call_next(request)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_400(request: Request, exc: RequestValidationError):
@@ -550,6 +584,15 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         project_names.pop(pid, None)
         return Response(status_code=204)
 
+    def selected_rewriter(cfg: dict, mode: str):
+        identifier = cfg[f"custom_pe_{mode}"]
+        if identifier:
+            try:
+                custom_models.get(identifier, f"pe_{mode}", ready=True)
+            except (ValueError, models.ModelNotReady) as exc:
+                raise HTTPException(409, str(exc))
+        return identifier or None
+
     # ---- runs ----------------------------------------------------------------------------------
     class GenSubmitError(Exception):
         def __init__(self, status: int, message: str):
@@ -568,8 +611,11 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         if selected_suite not in suites.VARIANTS:
             raise HTTPException(400, "Unknown Qwen-Image-2.1 suite")
         turbo = False
-        quant = models.SUITE_QUANTS[selected_suite]
-        image_model = text_encoder = f"official-{quant}"
+        image_model, text_encoder = custom_models.model_ids(selected_suite, cfg["custom_image"], cfg["custom_text_encoder"])
+        try:
+            custom_models.validate_pair(image_model, text_encoder)
+        except (ValueError, models.ModelNotReady) as exc:
+            raise HTTPException(409, str(exc))
         if body.steps is not None:
             steps = body.steps
         else:
@@ -628,13 +674,13 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
     def submit_prepared(prep: dict, prompt: str, *, enhanced_from: str | None, chain_id: str | None = None,
                         style: dict | None = None, skip_style: bool = False) -> str:
         """Send a prepared generation to the engine with its final prompt. On failure the pinned files and run number are released.
-        The art style (default: the one pinned in `prep`) is added first and the transparency wrap goes around the styled text;
-        `skip_style` leaves the text unstyled (an enhanced prompt that already carries the style) but the run still records it."""
+        The art style (default: the one pinned in `prep`) leads the model prompt, followed by transparency instructions and the subject.
+        Rewrites already starting with the style prefix keep that prefix once."""
         pid, n = prep["pid"], prep["n"]
         style = styles.normalize(prep.get("style") if style is None else style)
         model_prompt = styles.compose(prompt, style, prep["mode"], skip=skip_style)
         if prep["transparent"]:
-            model_prompt = wrap_transparent(model_prompt)
+            model_prompt = wrap_transparent(model_prompt, style, prep["mode"])
         try:
             job_id = engine.submit({**prep["job"], "prompt": model_prompt})
         except ValueError as exc:
@@ -688,7 +734,7 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
                 raise HTTPException(409, "The complete selected suite is not ready; open Settings")
             chain_id = uuid.uuid4().hex[:10]
             style = prep["style"]
-            job = {"kind": "enhance", "prompt": body.prompt + styles.enhancer_hint(style, mode), "mode": mode, "quant": cfg["pe_quant"], "thinking": thinking,
+            job = {"kind": "enhance", "prompt": styles.enhancer_prompt(body.prompt, style, mode), "mode": mode, "quant": cfg["pe_quant"], "rewriter": selected_rewriter(cfg, mode), "thinking": thinking,
                    "language": language, "max_new_tokens": cfg["pe_max_new_tokens"], "ref_image_path": prep["job"]["ref_image_path"]}
             try:
                 job_id = engine.submit(job)
@@ -911,7 +957,7 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
             raise HTTPException(409, "The complete selected suite is not ready; open Settings")
         style = styles.normalize(p.get("style"))
         job = {
-            "kind": "enhance", "prompt": body.prompt + styles.enhancer_hint(style, mode), "mode": mode, "quant": quant, "thinking": thinking,
+            "kind": "enhance", "prompt": styles.enhancer_prompt(body.prompt, style, mode), "mode": mode, "quant": quant, "rewriter": selected_rewriter(cfg, mode), "thinking": thinking,
             "language": language, "max_new_tokens": cfg["pe_max_new_tokens"],
             "ref_image_path": str(store.image_path(pid, parent)) if parent is not None else None,
         }
@@ -1019,15 +1065,69 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         return settings.get()
 
     @api.put("/settings")
-    def put_settings(partial: dict):
+    async def put_settings(partial: dict, request: Request):
         try:
+            for key, kind in (("custom_image", "image"), ("custom_text_encoder", "text_encoder"), ("custom_pe_t2i", "pe_t2i"), ("custom_pe_i2i", "pe_i2i")):
+                if partial.get(key):
+                    custom_models.get(partial[key], kind, ready=True)
             name = partial.get("model_suite")
             if isinstance(name, str) and name in suites.VARIANTS and name != settings.get()["model_suite"]:
                 if suites.status(name)["state"] != "ready":
                     raise HTTPException(409, "The complete suite must be ready before selecting it")
+            if network.NETWORK_KEYS & partial.keys():
+                if not network.local_control(request):
+                    raise HTTPException(403, "Network controls are available only in the local app")
+                unknown = set(partial) - set(settings_mod.DEFAULTS)
+                if unknown:
+                    raise ValueError(f"unknown setting(s): {sorted(unknown)}")
+                async with network_settings_lock:
+                    old = settings.get()
+                    new = {**old, **partial}
+                    settings_mod.validate(new)
+                    try:
+                        await app.state.network.apply(new)
+                        return settings.update(partial)
+                    except (OSError, RuntimeError) as exc:
+                        await app.state.network.apply(old)
+                        raise HTTPException(409, f"Could not change network settings: {exc}")
             return settings.update(partial)
+        except models.ModelNotReady as exc:
+            raise HTTPException(409, str(exc))
         except ValueError as exc:
             raise HTTPException(400, str(exc))
+
+    @api.get("/network")
+    def network_status(request: Request):
+        if not network.local_control(request):
+            raise HTTPException(403, "Network controls are available only in the local app")
+        return JSONResponse(app.state.network.status(include_key=True), headers={"Cache-Control": "no-store"})
+
+    @api.get("/custom-models")
+    def list_custom_models():
+        return custom_models.list_models()
+
+    @api.post("/custom-models/{identifier}/prepare", status_code=202)
+    def prepare_custom_model(identifier: str):
+        try:
+            return {"started": custom_models.prepare(identifier, settings.get()["model_suite"], engine.maintenance)}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        except (models.ModelNotReady, suites.SuiteError, EngineBusy) as exc:
+            raise HTTPException(409, str(exc))
+
+    @api.delete("/custom-models/{identifier}")
+    async def delete_custom_model(identifier: str):
+        try:
+            freed = await asyncio.to_thread(custom_models.delete, identifier, engine.maintenance)
+            cleared = {key: "" for key in ("custom_image", "custom_text_encoder", "custom_pe_t2i", "custom_pe_i2i")
+                       if settings.get()[key] == identifier}
+            if cleared:
+                settings.update(cleared)
+            return {"deleted": True, "freed_bytes": freed}
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+        except (suites.SuiteError, EngineBusy, OSError) as exc:
+            raise HTTPException(409, str(exc))
 
     @api.get("/model")
     def resident_model():

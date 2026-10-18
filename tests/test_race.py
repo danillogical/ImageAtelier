@@ -66,7 +66,7 @@ def test_done_implies_saved_and_run_event_precedes_done(app, engine, monkeypatch
         async def listen():
             scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
                      "scheme": "http", "path": "/api/events", "raw_path": b"/api/events", "query_string": b"",
-                     "headers": [], "server": ("test", 80), "client": ("test", 1)}
+                     "headers": [], "server": ("test", 80), "client": ("127.0.0.1", 1)}
 
             async def receive():
                 await asyncio.Event().wait()

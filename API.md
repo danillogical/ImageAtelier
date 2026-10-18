@@ -276,28 +276,239 @@ the last successful stand-alone `POST .../enhance`, so the rewrite survives a re
 
 A project has an art style: a curated text snippet the server adds to what is sent to the model. It is stored apart from the typed prompt, like the transparency wrap.
 
-- **`GET /api/styles`** -> the presets in display order, each `{id, label, description, snippet, keep}`; the custom entry also has `custom: true` (its `snippet` and `keep` are `""`).
+- **`GET /api/styles`** -> the presets in display order, each `{id, label, description, snippet, keep, suffix}`; the custom entry also has `custom: true` (its `snippet` and `keep` are `""`).
   Ids: `none` (default; adds nothing), `photoreal`, `cinematic`, `anime` (label "Anime / cel-shaded"), `stylized-anime`, `hand-drawn`, `watercolor`, `oil-painting`, `pixel-art`, `3d-render`, `low-poly`, `ink-line-art`, `comic-book`, `custom`.
-  `snippet` is the phrase added to a new image (e.g. `in a cel-shaded anime illustration style, clean line art, flat colors`); `keep` is the note added to an edit (e.g. `Keep the cel-shaded anime illustration style.`).
+  `snippet` leads a new-image prompt; `keep` leads an edit. Both anime snippets are `An anime illustration of `, immediately followed by the subject, then the preset-specific `suffix` (cel shading or stylized ink/shadows).
   For `custom` the user's text is the snippet and the keep note is `Keep the same art style: <text>`.
 - **`project.style`** is `{id}` or, for custom, `{id: "custom", custom: "<text>"}`. It is in `GET /api/projects/{pid}` and in every item of `GET /api/projects`. Projects created before the field existed read as `{id: "none"}`.
 - **Set:** `PATCH /api/projects/{pid} {style: {id, custom?}}` -> the project (200). The whole value is replaced. It bumps `updated_at` like a rename. Errors are 400 `{detail}`:
   `style` null or not an object; a key other than `id`/`custom`; an `id` that is not a preset; `id: "custom"` with `custom` missing, not a string, or empty after trimming; custom text longer than 300 characters (counted after trimming);
   `custom` present and not null with any other id (it is rejected, not dropped). Stored custom text is trimmed. A failed PATCH changes nothing (including `name`/`current_run` sent in the same body).
 - **Event:** SSE `style` `{project_id, style}` is sent after a PATCH that **changed** the style (comparing id and custom text; re-sending the current style sends nothing).
-- **Composition** (one place, at submit; `prompt` is the text sent in `POST /runs`, or the rewrite for a chain). Whitespace around the prompt is trimmed and **one trailing period** is dropped (the rule of the transparency wrap), then:
-  - new image (`mode "t2i"`): `<prompt>. <snippet>`
-  - edit (`mode "edit"`): `<prompt>. <keep>`
-  - style `none`: the prompt is sent unchanged (not trimmed).
-  - **Transparency wraps the already-styled text:** `This is an RGBA image with transparency. <prompt>. <snippet>. The image has alpha channel and the background is transparent.`
-  The style is read from the project when the run is prepared (`POST /runs`, `POST /enhance-and-generate`); changing it later does not affect runs already accepted (except a chain, below).
+- **Composition** (at submit; `prompt` is the user text or a rewrite): style text leads the prompt.
+  - New image (`mode "t2i"`): `<snippet>. <prompt>`. Anime presets use `An anime illustration of <prompt>. <suffix>`.
+  - Edit (`mode "edit"`): `<keep>. <prompt>` (without repeating the keep note's final period).
+  - Style `none`: the prompt is unchanged, including whitespace.
+  - Styled prompts trim surrounding whitespace and preserve user punctuation.
+  - Transparency follows the style prefix and precedes the subject: `<style>. This is an RGBA image with transparency. <prompt>. The image has alpha channel and the background is transparent.` Anime new images use `An anime illustration of an RGBA image with transparency: <prompt>. <suffix> The image has alpha channel and the background is transparent.` With style `none`, the RGBA sentence leads the prompt as before. One trailing period is removed before joining the alpha reminder.
+  The style is pinned when the run is prepared; changing it later does not affect accepted jobs (except chains, below).
 - **Run json:** `style` is `{id, label, custom?}` for the style in force (`label` is the preset label, "Custom" for custom; a run with no style is `{id: "none", label: "None"}`), and `model_prompt` is the final text including the style. `prompt` is still the user's text.
   Runs saved before this feature, and uploads, have `style: null`. Job snapshots of runs carry `style` too.
-- **Enhancer:** `POST /enhance` and the enhance step of `enhance-and-generate` append a hint to the text given to the rewriter, using the project style at that moment (before the engine adds its English-output suffix):
-  new image (`mode "t2i"`): `<prompt>\n\nArt style: <snippet>`; edit (`mode "i2i"`): `<prompt>\n\n<keep>`; style `none`: nothing. The hint is only in what the rewriter sees:
-  enhance job snapshots and `enhanced.original`/`enhanced_from` show the user's own text.
-- **`enhanced.style`** is `{id, custom?}` of the project style used for the enhance (`{id: "none"}` for an enhanced value stored before this feature).
-- **No double-add:** the rewrite was written in the style, so it is not styled again when the style is unchanged.
-  - `POST /runs` with `use_enhanced: true` and a stored `enhanced`: if `enhanced.style` equals the project's current style (same id and custom text), the prompt gets **no** snippet/keep; otherwise the current style is added as usual.
-  - `enhance-and-generate`: when the enhance is done, the chain compares the style it was started with to the project's style *at that moment*: equal -> not added; different -> the current style is added, and that current style is what the run records.
-  - Either way the run json still records `style`; only `model_prompt` differs. With `use_enhanced: false` the style is always added.
+- **Enhancer:** both enhancement routes receive the same style-first composition as generation, before the engine adds its English-output suffix. Snapshots and stored originals still show the user's text.
+- **`enhanced.style`** records the style requested for enhancement.
+- **Rewrites:** generation always ensures the current style is at the beginning, even if the rewriter omitted or moved it. An existing matching prefix is kept once. Anime-specific details are restored if missing.
+- **Chains:** when enhancement finishes, the project's current style is applied before submitting generation. Already accepted generation jobs remain unchanged.
+
+
+
+## Custom image transformers and text encoders
+
+`GET /api/custom-models` scans single-file `.safetensors` checkpoints and local prompt-enhancer folders directly under the configured models directory.
+Rows contain `id`, `kind` (`image`, `text_encoder`, `pe_t2i`, `pe_i2i`, or `unknown`), `label`, `filename`, `state`
+(`not_prepared`, `preparing`, `ready`, `incomplete`, or `unsupported`), `phase`, and `error`. Valid checkpoints also report `bytes` and `path`.
+The API accepts discovered IDs, never file paths.
+
+`POST /api/custom-models/{id}/prepare` returns 202 `{started: boolean}`. It uses the currently selected complete base
+suite's configuration and runs offline under model maintenance. Unsupported IDs or formats return 400; an incomplete
+base suite or conflicting preparation returns 409. Poll `GET /api/custom-models` for progress and errors.
+
+`PUT /api/settings` accepts `custom_image`, `custom_text_encoder`, `custom_pe_t2i`, and `custom_pe_i2i`: an empty string uses the base suite; a prepared
+custom ID selects an override. Unprepared checkpoints return 409; wrong component types and invalid IDs return 400.
+`model_suite` continues to choose the base VAE, processor, and prompt enhancers. Generation metadata records custom
+components as `{custom-id}@{base-suite}` so queued jobs retain their selected base.
+
+
+Complete local Hugging Face/MLX enhancer directories named with `-PE-T2I-` or `-PE-I2I-` are discovered alongside
+single-file checkpoints and load directly. Partial folders have state `incomplete` and cannot be selected or deleted
+through Settings while downloading. Selected enhancer IDs are pinned in enhancement jobs as `rewriter`.
+
+`DELETE /api/custom-models/{id}` removes that model's source file/folder and any prepared output under engine
+maintenance. Active preparation, downloads, or generation return 409; unknown IDs return 404. On success it returns
+`{deleted: true, freed_bytes: number}` and clears any setting that selected the deleted model. Other category selections,
+projects, and generated images are preserved.
+
+
+## Independent LAN listeners and memory API
+
+Local-only `GET /api/network` (never cached) returns `network_api_enabled`, `network_ui_enabled`, `api_listening`,
+`ui_listening`, `api_url`, `ui_url`, `ui_username`, `access_key`, and `error`. Keys are absent from `/api/settings`.
+`PUT /api/settings {network_api_enabled: boolean, network_ui_enabled: boolean}` controls the listeners immediately;
+both default to false. Remote UI clients and foreign browser origins cannot read the key or modify these switches (403).
+Bind failures return 409 and preserve the previous settings/listeners. Disabling either listener cancels its connections;
+UI job processing continues in the shared engine. Configured listeners are restored on startup.
+
+### Memory worker (`:8001`)
+
+Every route requires `Authorization: Bearer <access_key>`. No UI, project, filesystem, or history routes are exposed.
+
+- `GET /health` reports `{service:"imageatelier", mode:"memory", stores_images:false, provider:"qwen-image-2.1", active_requests,
+  actions:["enhance","generate"], max_reference_images:10, polling:true, result_ttl_seconds:600}`.
+- `POST /enhance` accepts JSON and **returns text, without generating an image**:
+  - `prompt`: nonempty string, at most 16000 characters. No built-in project style is added.
+  - `mode`: `t2i` or `i2i`. Omit it to choose T2I without references or I2I with references.
+    Explicit `i2i` requires an image; explicit `t2i` rejects images instead of ignoring them.
+  - `references`: zero to ten PNG/JPEG/WebP base64 data URLs, in image-number order. In I2I,
+    Image 1 is the source image; Images 2–10 are additional references. All images are supplied to the vision model.
+  - `thinking`: optional boolean; `language`: optional `english` or `auto`;
+    `max_new_tokens`: optional integer 256–16384. Omitted options use current Settings.
+  - `wait`: optional boolean, default true. Set false to get a request token immediately and poll for progress.
+  - The selected T2I/I2I prompt enhancer in Settings is used (custom models included). Model and
+    option selections are pinned when accepted, so later Settings changes cannot alter a queued request.
+
+  Success is JSON with `rewritten_prompt`, `fell_back`, `mode`, `rewriter`, and model/timing metadata,
+  with `Cache-Control: no-store`. For example:
+
+  ```json
+  {"rewritten_prompt":"A quiet library lit by warm reading lamps...","fell_back":false,"mode":"t2i","rewriter":"official-bf16"}
+  ```
+
+  Check `fell_back`: if the enhancer could not produce a valid rewrite, the returned text is the original prompt
+  and `fell_back` is true. Review or modify `rewritten_prompt`, then make a separate `/generate` request.
+  Calling `/enhance` alone creates no image, project, history entry or persisted enhanced-prompt record.
+- `POST /generate` accepts JSON:
+  - `prompt`: nonempty string, at most 16000 characters, sent verbatim (Worlds supplies its own art/style instructions).
+  - `width`, `height`: both omitted, or both multiples of 32 between 256 and 2048.
+  - `steps`: optional integer 2–100; defaults to the selected UI settings. `seed`: optional nonnegative integer.
+  - `mode`: `txt2img` (default), `t2i`, or `edit`. Edit requires at least one reference; the first is the current image.
+  - `references`: PNG/JPEG/WebP base64 data URLs, in conditioning order; no paths or fetched URLs. Per-image limits are
+    8 MiB encoded file bytes and 16 million pixels. Up to ten images total, including an edit's source image,
+    are accepted. This API limit is independent of the normal UI's maximum-extra-reference setting.
+  - `transparent`: optional boolean (default false), applies the normal alpha finalization. The caller supplies any
+    transparency wording in its prompt.
+  - `wait`: optional boolean, default true. Set false for the polling workflow below.
+
+By default, both POST routes keep the **same HTTP request open until completion**. `/enhance` returns JSON;
+`/generate` returns the finished PNG bytes. With `wait: false`, either route returns 202 and a polling token instead.
+There is no SSE stream on this API. The server remains
+responsive while requests wait on the asynchronous GPU queue; model work is serialized with normal UI jobs.
+
+The request body limit is 48 MiB, including base64 expansion of all images. Reference lists accept multiple images on
+both POST routes, up to ten. The same 8 MiB file-byte / 16-million-pixel limit applies to each enhancement reference.
+At most two memory requests can be outstanding **across both actions**, including queued work and unclaimed polling
+results. A full queue returns 429
+with Retry-After. Malformed requests return 400, oversized bodies 413, unavailable models 409, unavailable/cancelled jobs
+503, and timeout 504. Client disconnect cancels the job (499 if a response can still be delivered). Each action has a
+30-minute timeout, including queue time; configure the client's read timeout and any reverse proxy accordingly.
+An explicit retry is needed after an HTTP error; there is no hidden provider fallback.
+
+Success returns raw `image/png`, `Cache-Control: no-store`, and headers `X-Image-Provider`, `X-Image-Width`,
+`X-Image-Height`, and `X-Image-Seed`. No local output file, project, pinned reference or image history record is created.
+The response buffer is released after sending (also on a failed send); engine request data is removed. Models remain
+resident, and the GPU worker is shared with regular UI jobs. No prompt rewriting, project styles or disk-backed upscaling
+are applied automatically.
+
+#### Agent/client example: enhance, revise, then edit with references
+
+Use the memory listener on port 8001, not the project's `/api/.../enhance` routes on the disk-backed UI. Read the access
+key from an environment variable; do not commit or log it. The example's input and output files live on the **client**
+(webstudio), while ImageAtelier receives images inline. Use `mode: "t2i"` and omit `references` for text-only enhancement.
+
+```python
+import base64
+import json
+import os
+from pathlib import Path
+import urllib.request
+
+base = os.environ["IMAGEATELIER_URL"].rstrip("/")  # http://<laptop>.local:8001
+key = os.environ["IMAGEATELIER_ACCESS_KEY"]
+http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+def post(action, body):
+    request = urllib.request.Request(base + action, data=json.dumps(body).encode(), headers={
+        "Authorization": "Bearer " + key, "Content-Type": "application/json",
+    })
+    return http.open(request, timeout=1800)
+
+def png_reference(path):
+    return "data:image/png;base64," + base64.b64encode(Path(path).read_bytes()).decode()
+
+references = [png_reference("source.png"), png_reference("outfit.png"), png_reference("pose.png")]
+with post("/enhance", {"prompt": "Use Image 2's outfit and Image 3's pose for Image 1's character.",
+                       "mode": "i2i", "references": references, "thinking": False}) as response:
+    enhanced = json.load(response)
+if enhanced["fell_back"]:
+    raise RuntimeError("Enhancer returned the original prompt; review it before generating")
+
+final_prompt = enhanced["rewritten_prompt"]  # Worlds/another agent can inspect and change this text here.
+with post("/generate", {"prompt": final_prompt, "mode": "edit", "references": references,
+                        "width": 832, "height": 1248, "steps": 40, "seed": 42}) as response:
+    Path("edited.png").write_bytes(response.read())
+```
+
+`/generate` always uses the supplied final prompt verbatim. There is no `enhance_prompt` boolean: enhancement is an
+explicit, separate action so the client controls the prompt handed to the image model.
+
+#### Optional polling and progress updates
+
+Submit either action with `"wait": false`. The response is **202 Accepted**, with `Location` pointing to the status
+endpoint and `Retry-After: 1`. Example:
+
+```json
+{"request_id":"<opaque-token>","status_url":"/requests/<opaque-token>","result_url":"/requests/<opaque-token>/result","cancel_url":"/requests/<opaque-token>"}
+```
+
+These URLs are relative to the memory API base URL. The request token identifies the transient job; it does **not**
+replace Bearer authentication. Send the same access-key header on every status, result and cancellation call.
+
+| Method and route | Behavior |
+| --- | --- |
+| `GET /requests/{request_id}` | Returns state, queue position and progress. Poll every 1–2 seconds. |
+| `GET /requests/{request_id}/result` | Returns the PNG or enhancement JSON when finished; 409 with Retry-After while pending. |
+| `DELETE /requests/{request_id}` | Cancels queued/running work or discards a retained result, returns 204. |
+
+Example status response:
+
+```json
+{"request_id":"<opaque-token>","kind":"generate","state":"running","queue_position":null,"progress":{"phase":null,"step":12,"total_steps":40,"tokens":null},"error":null,"result_url":null,"expires_in":null}
+```
+
+States are `queued`, `held`, `loading`, `running`, `paused`, `cancelling`, `done`, `failed` or `cancelled`.
+`queue_position` is one-based while queued and null otherwise. Generation exposes `step` and `total_steps`;
+enhancement exposes `phase` (`thinking` or `writing`) and generated `tokens`. Inapplicable or not-yet-known values are
+null. Progress does not expose thinking text. Show phase names, steps or token counts; steps describe denoising,
+not an overall percentage that also covers loading, encoding and decoding.
+
+When done, status supplies `result_url` and `expires_in` (seconds). Fetch the result once and save it on the client.
+**Result retrieval consumes the request**, including a terminal error response; subsequent status/result calls return
+404. The PNG buffer is released after sending, including failed sends. A failed/interrupted download must be regenerated.
+Status requests alone do not consume or extend the result's lifetime. For `failed`/`cancelled`, inspect `error` and
+fetch the error result or delete the request to free its slot.
+
+Unclaimed completed results/errors expire after **10 minutes**. Unfinished jobs time out after **30 minutes** and
+their inputs are released after worker teardown. Disconnecting after a 202 does not cancel asynchronous work: use
+DELETE. Disabling the API or shutting down ImageAtelier cancels and clears outstanding requests. Tokens and images
+are memory-only; after consumption, cancellation, expiry or app restart the token returns 404.
+
+Using the `post()` helper above, a polling enhancement looks like this:
+
+```python
+import time
+
+headers = {"Authorization": "Bearer " + key}
+with post("/enhance", {"prompt": "a quiet library", "wait": False}) as response:
+    ticket = json.load(response)
+try:
+    while True:
+        with http.open(urllib.request.Request(base + ticket["status_url"], headers=headers), timeout=30) as response:
+            status = json.load(response)
+        print(status["state"], status["progress"])
+        if status["state"] in ("done", "failed", "cancelled"):
+            break
+        time.sleep(1)
+    with http.open(urllib.request.Request(base + ticket["result_url"], headers=headers), timeout=1800) as response:
+        enhanced = json.load(response)  # /generate's result is PNG bytes instead.
+finally:
+    # Best-effort cancellation/discard if interrupted. A consumed/expired token already returns 404.
+    try:
+        http.open(urllib.request.Request(base + ticket["cancel_url"], headers=headers, method="DELETE"), timeout=10).close()
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+```
+
+### Network UI (`:8002`)
+
+The normal app is available with HTTP Basic authentication: username `imageatelier`, password equal to the access key.
+It uses normal disk-backed projects and generation. Its network/key controls are unavailable remotely. Legacy LAN-bound
+main/HTTP listeners also enforce the UI switch and authentication, so they cannot bypass the off setting.

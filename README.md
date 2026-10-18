@@ -80,6 +80,68 @@ Source downloads use the Hugging Face cache (`IMAGEATELIER_HF_CACHE` overrides i
 `models/Qwen-Image-2.1/` (`IMAGEATELIER_MODELS_DIR` overrides `models/`). Existing unrelated model files are not deleted.
 Only one inference model is held in memory at a time. The model and enhancers inherit the Qwen Research License.
 
+## Custom image models and text encoders
+
+Put single-file Qwen-Image-2.1 `.safetensors` checkpoints directly in `models/` (or
+`IMAGEATELIER_MODELS_DIR`). Open **Settings → Custom models → Refresh models**. The app inspects the
+weights to distinguish image transformers from text and vision encoders.
+
+Download or convert and select a complete official base suite, then click **Prepare** for each custom
+checkpoint. Choose its card in **Image Transformers** or **Text and Vision Encoders**. Click the selected card again to remove its override. The base suite supplies the VAE, processor, and both prompt enhancers.
+Generation pins the selected custom components and base suite in each job.
+
+Preparation runs offline and verifies parameter names and shapes against Qwen's architecture. It supports dense
+BF16/F16/F32 transformers, including fused `img_mlp.gate_up` weights, and dense or ComfyUI `int8_tensorwise`
+text encoders, including ConvRot. Encoders must include their vision tower. INT8 encoders expand to BF16,
+using more disk and RAM than the source file. Prepared copies live under `models/.custom/`; originals stay in place.
+Replacing a source file invalidates its preparation. The existing `models/` Git ignore rule covers all of these files.
+Custom Hugging Face/MLX prompt-enhancer folders are listed in **T2I Prompt Enhancer** and **I2I Prompt Enhancer**.
+Name their folders with `-PE-T2I-` or `-PE-I2I-` and include all indexed safetensors shards, configuration,
+tokenizer, processor, and `system_prompt.txt`. Complete folders load directly through mlx-vlm without another copy.
+Within each category, clicking a card selects it and clears the previous selection; clicking it again selects none.
+An empty category selection uses the official base suite's component. The **Delete** action removes the source and
+its prepared copy after confirmation, unloads resident weights, and clears its selection without changing projects.
+GGUF and LoRA-only checkpoints are not supported by this import flow.
+
+## Network access for Worlds and other computers
+
+Open **Settings → Network access** in the local app. The two switches are independent, off by default, take effect
+immediately, and persist across restarts:
+
+- **Worlds API** listens on `http://<laptop>.local:8001`. `/enhance` returns a rewritten prompt as JSON for you to review
+  or change; `/generate` separately returns PNG bytes for generation or image edits. Both accept multiple reference images,
+  up to ten total (including an edit's source). It never creates projects, saves output images, writes reference temp files,
+  or keeps image-job history.
+- **Network UI** listens on `http://<laptop>.local:8002`. It serves the normal app with the same projects, images, model
+  settings, and disk storage as the local window. Sign in as `imageatelier`, using the access key as the password.
+
+Copy the **Access key** from local Settings. API clients send it as `Authorization: Bearer <key>`. Network controls and
+key display are local-only. The key is persisted separately in the data folder with owner-only permissions. These are
+trusted-LAN HTTP listeners; use a trusted network or an HTTPS reverse proxy for encrypted traffic. Closing the app stops
+both listeners. `IMAGEATELIER_API_PORT` and `IMAGEATELIER_UI_PORT` override their default ports.
+
+Both listeners share the existing single GPU worker and selected image model/text encoder; there is no second model
+process. Both actions wait for completion by default. Set `wait: false` to receive a token immediately, poll for queue/step/token
+progress, then fetch the result. DELETE cancels; unclaimed completed results expire after ten minutes. The memory API allows
+two outstanding requests across both actions (including retained results) and returns 429 when full. Reference inputs are image data URLs,
+never local paths or remote URLs. Per-request references, output bytes and job records are released after response,
+disconnect, timeout or cancellation. Model weights remain resident for reuse. This is application-level memory-only image
+handling; macOS may still use virtual-memory swap. Settings, model weights and normal UI data retain their usual storage.
+
+From **webstudio.local**, call the laptop URL displayed in Settings; webstudio decides where to save the response:
+
+```sh
+curl --fail -H "Authorization: Bearer $IMAGEATELIER_ACCESS_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"An anime illustration of a quiet village.","width":832,"height":1248,"steps":40,"seed":42}' \
+  "http://<laptop>.local:8001/generate" --output generated.png
+```
+
+This provides the remote worker endpoint. Worlds' image-provider adapter must call this endpoint and commit the returned
+PNG on webstudio; pointing Worlds at it requires that adapter rather than moving the game or asset store to this laptop.
+See [API.md](API.md#memory-worker-8001) for the agent/client contract, request limits, errors and a complete
+enhance → revise → generate example with multiple reference images.
+
 ## Phone setup
 
 1. Open `http://<host>.local/ca` and follow the certificate installation instructions. On iOS, enable full trust in

@@ -340,7 +340,7 @@ class TestServerLog:
 async def _listen(app, query, chunks, started):
     scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http",
              "path": "/api/events", "raw_path": b"/api/events", "query_string": query, "headers": [],
-             "server": ("test", 80), "client": ("test", 1)}
+             "server": ("test", 80), "client": ("127.0.0.1", 1)}
 
     async def receive():
         await asyncio.Event().wait()

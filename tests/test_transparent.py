@@ -61,7 +61,7 @@ class TestWrapping:
 
     def test_only_one_period_is_stripped(self, client, pid, engine):
         post_run(client, pid, "a cat..", transparent=True)
-        assert engine.submitted[-1]["prompt"] == PREFIX + "a cat." + SUFFIX  # the second period stays
+        assert engine.submitted[-1]["prompt"] == wrapped("a cat..")  # the second period stays
 
     def test_non_transparent_prompt_is_unchanged(self, client, pid, engine):
         for flag in ({}, {"transparent": False}):

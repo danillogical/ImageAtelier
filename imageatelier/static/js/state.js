@@ -6,6 +6,8 @@ export const S = {
   jobs: new Map(), // active (non-final) job snapshots by id
   settings: null,
   models: [],
+  customModels: [],
+  networkInfo: null,
   styles: [], // GET /api/styles (art style presets)
   online: true,
   showDetails: false,

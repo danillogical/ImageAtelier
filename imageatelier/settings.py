@@ -15,6 +15,12 @@ log = logging.getLogger(__name__)
 
 DEFAULTS: dict = {
     "model_suite": "q8",
+    "network_api_enabled": False,
+    "network_ui_enabled": False,
+    "custom_image": "",
+    "custom_text_encoder": "",
+    "custom_pe_t2i": "",
+    "custom_pe_i2i": "",
     "steps": 40,
     "low_memory": True,
     "vae_tiling": False,
@@ -57,11 +63,19 @@ def validate(s: dict) -> None:
     """Raise ValueError if a complete settings dict is invalid."""
     if not isinstance(s["model_suite"], str) or s["model_suite"] not in suites.VARIANTS:
         raise ValueError(f"model_suite must be one of {list(suites.VARIANTS)}")
+    from imageatelier import custom_models
+    for key, kind in (("custom_image", "image"), ("custom_text_encoder", "text_encoder"), ("custom_pe_t2i", "pe_t2i"), ("custom_pe_i2i", "pe_i2i")):
+        if not isinstance(s[key], str):
+            raise ValueError(f"{key} must be a string")
+        if s[key]:
+            custom_models.folder(s[key])
+            if "@" in s[key]:
+                raise ValueError(f"{key} must be a custom model ID without a base-suite suffix")
     if s["pe_language"] not in PE_LANGUAGES:
         raise ValueError(f"pe_language must be one of {list(PE_LANGUAGES)}, got {s['pe_language']!r}")
     if not _is_int(s["pe_max_new_tokens"]) or not MIN_PE_TOKENS <= s["pe_max_new_tokens"] <= MAX_PE_TOKENS:
         raise ValueError(f"pe_max_new_tokens must be an integer between {MIN_PE_TOKENS} and {MAX_PE_TOKENS}")
-    for key in ("low_memory", "vae_tiling", "pe_thinking"):
+    for key in ("low_memory", "vae_tiling", "pe_thinking", "network_api_enabled", "network_ui_enabled"):
         if not isinstance(s[key], bool):
             raise ValueError(f"{key} must be a boolean, got {s[key]!r}")
     if not _is_int(s["resolution"]) or not MIN_RESOLUTION <= s["resolution"] <= MAX_RESOLUTION:
@@ -109,7 +123,9 @@ class SettingsStore:
     @staticmethod
     def _with_parts(values: dict) -> dict:
         quant = models.SUITE_QUANTS[values["model_suite"]]
-        return {**values, "image_model": f"official-{quant}", "text_encoder": f"official-{quant}",
+        from imageatelier import custom_models
+        image, encoder = custom_models.model_ids(values["model_suite"], values["custom_image"], values["custom_text_encoder"])
+        return {**values, "image_model": image, "text_encoder": encoder,
                 "pe_quant": quant, "pe_variant": "official", "turbo": False}
 
     def get(self) -> dict:

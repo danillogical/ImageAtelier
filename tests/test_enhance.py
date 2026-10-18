@@ -254,7 +254,7 @@ def collect_events(app, action, done, timeout=8.0):
         async def listen():
             scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
                      "scheme": "http", "path": "/api/events", "raw_path": b"/api/events", "query_string": b"",
-                     "headers": [], "server": ("test", 80), "client": ("test", 1)}
+                     "headers": [], "server": ("test", 80), "client": ("127.0.0.1", 1)}
 
             async def receive():
                 await asyncio.Event().wait()

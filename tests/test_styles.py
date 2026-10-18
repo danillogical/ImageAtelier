@@ -44,17 +44,32 @@ def base(prompt):
     return p[:-1] if p.endswith(".") else p
 
 
-def t2i(prompt, snippet):
-    return f"{base(prompt)}. {snippet}"
+ANIME_SUFFIX = "Clean line art, flat colors and cel shading."
+
+
+def t2i(prompt, snippet, suffix=None):
+    if snippet == "An anime illustration of ":
+        suffix = ANIME_SUFFIX if suffix is None else suffix
+        p = prompt.strip()
+        return f"{snippet}{p}{'' if p.endswith(('.', '!', '?')) else '.'} {suffix}"
+    return f"{snippet.rstrip('. ')}. {prompt.strip()}"
 
 
 def edit(prompt, keep):
-    return f"{base(prompt)}. {keep}"
+    return f"{keep.rstrip('. ')}. {prompt.strip()}"
 
 
 def wrap(styled):
-    """The transparency wrap drops one trailing period of the text it wraps (keep notes end in one)."""
-    return PREFIX + base_no_ws(styled) + SUFFIX
+    anime = "An anime illustration of "
+    alpha = "The image has alpha channel and the background is transparent."
+    text = styled[:-1] if styled.endswith(".") else styled
+    if text.startswith(anime):
+        return f"{anime}an RGBA image with transparency: {text[len(anime):]}. {alpha}"
+    if ". " in text:
+        style, body = text.split(". ", 1)
+        return f"{style}. This is an RGBA image with transparency. {body}. {alpha}"
+    from test_transparent import wrapped
+    return wrapped(styled)
 
 
 def base_no_ws(text):
@@ -74,7 +89,12 @@ def run_json(client, pid, n):
 
 
 def strip_hint(p):
-    return p.split("\n\n")[0]
+    # Simulate a rewriter returning just the subject, omitting its requested style prefix.
+    if p.startswith("An anime illustration of "):
+        return p.removeprefix("An anime illustration of ").removesuffix(" " + ANIME_SUFFIX).removesuffix(".")
+    if p.startswith(("Keep ", "chalk. ")):
+        return p.split(". ", 1)[1]
+    return p
 
 
 # ---- GET /api/styles --------------------------------------------------------------------------
@@ -274,13 +294,13 @@ class TestStyleEvent:
 
 # ---- composition ------------------------------------------------------------------------------
 class TestComposition:
-    def test_new_image_appends_snippet(self, client, pid, engine):
+    def test_new_image_prepends_snippet(self, client, pid, engine):
         snip = styles(client)["anime"]["snippet"]
         set_ok(client, pid, {"id": "anime"})
         r = submit(client, pid, "a cat")
         run = run_json(client, pid, r["run_reserved"])
-        assert run["model_prompt"] == f"a cat. {snip}" and run["prompt"] == "a cat"
-        assert gen_jobs(engine)[-1]["prompt"] == f"a cat. {snip}"
+        assert run["model_prompt"] == t2i("a cat", snip) and run["prompt"] == "a cat"
+        assert gen_jobs(engine)[-1]["prompt"] == t2i("a cat", snip)
 
     @pytest.mark.parametrize("typed", ["a cat.", "  a cat.  ", "a cat", "a cat..", "  a cat  "])
     def test_trim_and_one_trailing_period(self, client, pid, engine, typed):
@@ -295,17 +315,17 @@ class TestComposition:
         snip = styles(client)["anime"]["snippet"]
         set_ok(client, pid, {"id": "anime"})
         run = run_json(client, pid, submit(client, pid, "wait...")["run_reserved"])
-        assert run["model_prompt"] == "wait.." + ". " + snip  # "wait..." -> drop one period -> "wait.." + ". <snippet>"
+        assert run["model_prompt"] == t2i("wait...", snip)
 
-    def test_edit_appends_keep_note(self, client, pid, engine):
+    def test_edit_prepends_keep_note(self, client, pid, engine):
         do_run(client, pid, "base")
         keep = styles(client)["oil-painting"]["keep"]
         set_ok(client, pid, {"id": "oil-painting"})
         r = submit(client, pid, "make it blue.")
         assert r["mode"] == "edit"
         run = run_json(client, pid, r["run_reserved"])
-        assert run["model_prompt"] == f"make it blue. {keep}" and run["prompt"] == "make it blue."
-        assert gen_jobs(engine)[-1]["prompt"] == f"make it blue. {keep}"
+        assert run["model_prompt"] == edit("make it blue.", keep) and run["prompt"] == "make it blue."
+        assert gen_jobs(engine)[-1]["prompt"] == edit("make it blue.", keep)
 
     def test_none_leaves_prompt_unchanged_and_untrimmed(self, client, pid, engine):
         p = "  a cat.  "
@@ -321,20 +341,20 @@ class TestComposition:
     def test_custom_new_image_uses_users_text(self, client, pid, engine):
         set_ok(client, pid, {"id": "custom", "custom": "  chalk on slate "})
         run = run_json(client, pid, submit(client, pid, "a cat")["run_reserved"])
-        assert run["model_prompt"] == "a cat. chalk on slate"
+        assert run["model_prompt"] == "chalk on slate. a cat"
 
     def test_custom_edit_uses_derived_keep_note(self, client, pid, engine):
         do_run(client, pid, "base")
         set_ok(client, pid, {"id": "custom", "custom": "chalk on slate"})
         run = run_json(client, pid, submit(client, pid, "add a hat")["run_reserved"])
-        assert run["model_prompt"] == "add a hat. Keep the same art style: chalk on slate"
+        assert run["model_prompt"] == "Keep the same art style: chalk on slate. add a hat"
 
     @pytest.mark.parametrize("sid", [i for i in IDS if i not in ("none", "custom")])
     def test_every_preset_composes_from_its_listing(self, client, pid, engine, sid):
         s = styles(client)[sid]
         set_ok(client, pid, {"id": sid})
         n1 = submit(client, pid, "a cat")["run_reserved"]
-        assert run_json(client, pid, n1)["model_prompt"] == t2i("a cat", s["snippet"])
+        assert run_json(client, pid, n1)["model_prompt"] == t2i("a cat", s["snippet"], s["suffix"])
         n2 = submit(client, pid, "bigger")["run_reserved"]
         assert run_json(client, pid, n2)["model_prompt"] == edit("bigger", s["keep"])
 
@@ -370,8 +390,8 @@ class TestTransparencyOrder:
         snip = styles(client)["pixel-art"]["snippet"]
         set_ok(client, pid, {"id": "pixel-art"})
         run = run_json(client, pid, submit(client, pid, "a cat.", transparent=True)["run_reserved"])
-        want = wrap(f"a cat. {snip}")
-        assert want == f"{PREFIX}a cat. {snip}{SUFFIX}"
+        want = wrap(t2i("a cat.", snip))
+        assert want.startswith(snip)
         assert run["model_prompt"] == want and gen_jobs(engine)[-1]["prompt"] == want
         assert run["prompt"] == "a cat."
 
@@ -380,7 +400,7 @@ class TestTransparencyOrder:
         keep = styles(client)["low-poly"]["keep"]
         set_ok(client, pid, {"id": "low-poly"})
         run = run_json(client, pid, submit(client, pid, "add a hat", transparent=True)["run_reserved"])
-        assert run["model_prompt"] == wrap(f"add a hat. {keep}")
+        assert run["model_prompt"] == wrap(edit("add a hat", keep))
 
     def test_wrap_with_none_is_unchanged_behaviour(self, client, pid):
         run = run_json(client, pid, submit(client, pid, "a cat.", transparent=True)["run_reserved"])
@@ -389,7 +409,7 @@ class TestTransparencyOrder:
     def test_wrap_with_custom(self, client, pid):
         set_ok(client, pid, {"id": "custom", "custom": "chalk"})
         run = run_json(client, pid, submit(client, pid, "a cat", transparent=True)["run_reserved"])
-        assert run["model_prompt"] == wrap("a cat. chalk")
+        assert run["model_prompt"] == wrap("chalk. a cat")
 
 
 # ---- run json style field ---------------------------------------------------------------------
@@ -450,7 +470,7 @@ class TestEnhancerHint:
         set_ok(client, pid, {"id": "anime"})
         job = self._enh(client, pid, engine)
         assert job["mode"] == "t2i"
-        assert job["prompt"] == f"a cat\n\nArt style: {snip}"
+        assert job["prompt"] == t2i("a cat", snip)
 
     def test_i2i_hint(self, client, pid, engine):
         do_run(client, pid, "base")
@@ -458,7 +478,7 @@ class TestEnhancerHint:
         set_ok(client, pid, {"id": "anime"})
         job = self._enh(client, pid, engine, "make it blue")
         assert job["mode"] == "i2i"
-        assert job["prompt"] == f"make it blue\n\n{keep}"
+        assert job["prompt"] == edit("make it blue", keep)
 
     def test_none_adds_nothing(self, client, pid, engine):
         job = self._enh(client, pid, engine)
@@ -469,16 +489,16 @@ class TestEnhancerHint:
 
     def test_custom_hints(self, client, pid, engine):
         set_ok(client, pid, {"id": "custom", "custom": "chalk"})
-        assert self._enh(client, pid, engine)["prompt"] == "a cat\n\nArt style: chalk"
+        assert self._enh(client, pid, engine)["prompt"] == "chalk. a cat"
         do_run(client, pid, "base")
-        assert self._enh(client, pid, engine, "x")["prompt"] == "x\n\nKeep the same art style: chalk"
+        assert self._enh(client, pid, engine, "x")["prompt"] == "Keep the same art style: chalk. x"
 
     def test_hint_comes_before_the_english_suffix(self, client, pid, engine):
         # The engine (not the app) adds the English-output suffix, so the text handed to it ends with the hint.
         snip = styles(client)["anime"]["snippet"]
         set_ok(client, pid, {"id": "anime"})
         job = self._enh(client, pid, engine)
-        assert job["prompt"].endswith(f"Art style: {snip}")
+        assert job["prompt"].startswith(snip)
 
     def test_hint_is_not_in_snapshot_or_original(self, client, pid, engine):
         set_ok(client, pid, {"id": "anime"})
@@ -516,7 +536,7 @@ class TestEnhancerHint:
         set_ok(client, pid, {"id": "anime"})
         body = chain(client, pid, "a cat")
         run_of(client, pid, body["run_reserved"])
-        assert enh_jobs(engine)[-1]["prompt"] == f"a cat\n\nArt style: {snip}"
+        assert enh_jobs(engine)[-1]["prompt"] == t2i("a cat", snip)
         assert job_snap(client, body["enhance_job_id"])["prompt"] == "a cat"
 
 
@@ -528,8 +548,8 @@ class TestNoDoubleAdd:
         enhance_done(client, pid, "a cat")
         r = submit(client, pid, "ENHANCED: a cat", use_enhanced=True)
         run = run_json(client, pid, r["run_reserved"])
-        assert run["model_prompt"] == "ENHANCED: a cat"
-        assert gen_jobs(engine)[-1]["prompt"] == "ENHANCED: a cat"
+        assert run["model_prompt"] == t2i("ENHANCED: a cat", "An anime illustration of ")
+        assert gen_jobs(engine)[-1]["prompt"] == run["model_prompt"]
         assert run["style"]["id"] == "anime"
 
     def test_use_enhanced_unchanged_custom_not_added(self, client, pid, engine):
@@ -538,7 +558,7 @@ class TestNoDoubleAdd:
         enhance_done(client, pid, "a cat")
         set_ok(client, pid, {"id": "custom", "custom": " chalk "})
         run = run_json(client, pid, submit(client, pid, "R", use_enhanced=True)["run_reserved"])
-        assert run["model_prompt"] == "R"
+        assert run["model_prompt"] == "chalk. R"
         assert run["style"] == {"id": "custom", "label": "Custom", "custom": "chalk"}
 
     def test_use_enhanced_changed_preset_added(self, client, pid, engine):
@@ -557,7 +577,7 @@ class TestNoDoubleAdd:
         enhance_done(client, pid, "a cat")
         set_ok(client, pid, {"id": "custom", "custom": "crayon"})
         run = run_json(client, pid, submit(client, pid, "R", use_enhanced=True)["run_reserved"])
-        assert run["model_prompt"] == "R. crayon"
+        assert run["model_prompt"] == "crayon. R"
 
     def test_use_enhanced_style_removed_adds_nothing(self, client, pid, engine):
         engine.enhance_text = strip_hint
@@ -581,7 +601,7 @@ class TestNoDoubleAdd:
         enhance_done(client, pid, "blue")
         r = submit(client, pid, "R", use_enhanced=True)
         assert r["mode"] == "edit"
-        assert run_json(client, pid, r["run_reserved"])["model_prompt"] == "R"
+        assert run_json(client, pid, r["run_reserved"])["model_prompt"] == edit("R", styles(client)["anime"]["keep"])
 
     def test_use_enhanced_without_stored_value_styles_normally(self, client, pid):
         snip = styles(client)["anime"]["snippet"]
@@ -594,15 +614,15 @@ class TestNoDoubleAdd:
         set_ok(client, pid, {"id": "anime"})
         enhance_done(client, pid, "a cat")
         run = run_json(client, pid, submit(client, pid, "R", use_enhanced=True, transparent=True)["run_reserved"])
-        assert run["model_prompt"] == wrap("R")
+        assert run["model_prompt"] == wrap(t2i("R", "An anime illustration of "))
 
     def test_chain_unchanged_style_not_added(self, client, pid, engine):
         engine.enhance_text = strip_hint
         set_ok(client, pid, {"id": "anime"})
         body = chain(client, pid, "a cat")
         run = run_of(client, pid, body["run_reserved"])
-        assert run["prompt"] == "a cat" and run["model_prompt"] == "a cat"
-        assert gen_jobs(engine)[-1]["prompt"] == "a cat"
+        assert run["prompt"] == "a cat" and run["model_prompt"] == t2i("a cat", "An anime illustration of ")
+        assert gen_jobs(engine)[-1]["prompt"] == run["model_prompt"]
         assert run["style"]["id"] == "anime"
         assert run["enhanced_from"] == "a cat"
 
@@ -624,7 +644,7 @@ class TestNoDoubleAdd:
         assert run["model_prompt"] == t2i("a cat", s["watercolor"]["snippet"])
         assert gen_jobs(engine)[-1]["prompt"] == run["model_prompt"]
         assert run["style"] == {"id": "watercolor", "label": s["watercolor"]["label"]}
-        assert enh_jobs(engine)[-1]["prompt"] == f"a cat\n\nArt style: {s['anime']['snippet']}"
+        assert enh_jobs(engine)[-1]["prompt"] == t2i("a cat", s["anime"]["snippet"])
 
     def test_chain_style_changed_edit_uses_keep(self, client, pid, engine):
         s = styles(client)
@@ -637,7 +657,7 @@ class TestNoDoubleAdd:
         set_ok(client, pid, {"id": "custom", "custom": "chalk"})
         engine.release.set()
         run = run_of(client, pid, body["run_reserved"])
-        assert run["model_prompt"] == "blue. Keep the same art style: chalk"
+        assert run["model_prompt"] == "Keep the same art style: chalk. blue"
         assert run["style"] == {"id": "custom", "label": "Custom", "custom": "chalk"}
 
     def test_chain_style_cleared_while_pending_adds_nothing(self, client, pid, engine):
@@ -660,7 +680,7 @@ class TestNoDoubleAdd:
         set_ok(client, pid, {"id": "watercolor"})
         set_ok(client, pid, {"id": "anime"})
         engine.release.set()
-        assert run_of(client, pid, body["run_reserved"])["model_prompt"] == "a cat"
+        assert run_of(client, pid, body["run_reserved"])["model_prompt"] == t2i("a cat", "An anime illustration of ")
 
     def test_chain_transparent_wraps_styled_current_style_when_changed(self, client, pid, engine):
         s = styles(client)
@@ -672,3 +692,30 @@ class TestNoDoubleAdd:
         engine.release.set()
         run = run_of(client, pid, body["run_reserved"])
         assert run["model_prompt"] == wrap(t2i("a cat", s["anime"]["snippet"]))
+
+
+@pytest.mark.parametrize("sid", ["anime", "stylized-anime"])
+def test_anime_subject_follows_exact_prefix_and_keeps_distinct_style(sid):
+    from imageatelier import styles as style_module
+    result = style_module.compose("a cat on a rooftop", {"id": sid}, "t2i")
+    assert result.startswith("An anime illustration of a cat on a rooftop.")
+    assert ("cel shading" if sid == "anime" else "heavy black ink") in result
+    assert style_module.compose(result, {"id": sid}, "t2i", skip=True) == result
+
+
+@pytest.mark.parametrize("mode", ["t2i", "edit"])
+def test_existing_style_prefix_is_not_repeated(mode):
+    from imageatelier import styles as style_module
+    first = style_module.compose("a cat", {"id": "anime"}, mode)
+    assert style_module.compose(first, {"id": "anime"}, mode, skip=True) == first
+
+
+@pytest.mark.parametrize("sid", ["anime", "stylized-anime"])
+def test_enhanced_anime_transparency_still_starts_with_style(client, pid, engine, sid):
+    set_ok(client, pid, {"id": sid})
+    engine.enhance_text = lambda prompt: "a cat on a rooftop"
+    enhance_done(client, pid, "a cat")
+    result = run_json(client, pid, submit(client, pid, "a cat on a rooftop", use_enhanced=True, transparent=True)["run_reserved"])
+    assert result["model_prompt"].startswith("An anime illustration of an RGBA image with transparency: a cat on a rooftop.")
+    assert result["model_prompt"].index("RGBA image") < result["model_prompt"].index("a cat on a rooftop")
+    assert ("cel shading" if sid == "anime" else "heavy black ink") in result["model_prompt"]

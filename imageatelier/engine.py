@@ -11,6 +11,7 @@ import contextlib
 import copy
 import datetime
 import gc
+import io
 import json
 import logging
 import os
@@ -145,6 +146,12 @@ class _Job:
     image_model: str = models.DEFAULT_IMAGE_MODEL
     text_encoder: str = models.DEFAULT_TEXT_ENCODER
     output_path: str = ""
+    memory_only: bool = False
+    reference_images: list = field(default_factory=list, repr=False)
+    png_bytes: bytes | None = field(default=None, repr=False)
+    abandoned: bool = False
+    output_width: int | None = None
+    output_height: int | None = None
     transparent: bool = False  # keep a cut-out background (alpha < 16 -> 0); otherwise the saved image is fully opaque
     ref_image_paths: list = field(default_factory=list)  # extra references, in order (Image 2.. for edits)
     ref_detail: str = DEFAULT_REF_DETAIL
@@ -420,7 +427,7 @@ class ModelManager:
         from mflux.models.qwen21.reference import QwenImage21Edit
 
         _, image_model, _text_encoder, turbo = key
-        config = copy.copy(AVAILABLE_MODELS[models.IMAGE_MODELS[image_model].registry_key])
+        config = copy.copy(AVAILABLE_MODELS["qwen-image-2.1" if image_model.startswith("custom-") else models.IMAGE_MODELS[image_model].registry_key])
         model = QwenImage21Edit(
             model_path=str(snapshot),
             model_config=config,
@@ -512,6 +519,9 @@ class Engine:
         for job in queued:
             self._jlog(job, "cancelled: engine stopping")
             self._set_state(job, CANCELLED)
+            if job.memory_only:
+                self._clear_memory_inputs(job)
+                job.png_bytes = None
         if current and current.cancel_requested and current.state not in FINAL_STATES:
             self._jlog(current, "cancel requested: engine stopping")
             self._set_state(current, CANCELLING)
@@ -730,7 +740,60 @@ class Engine:
 
     def jobs(self) -> list[dict]:
         with self._lock:
-            return [self._snap(j) for j in self._jobs.values()]
+            return [self._snap(j) for j in self._jobs.values() if not j.memory_only]
+
+    def submit_memory(self, job: Mapping[str, Any], images: list) -> str:
+        """Queue a transient PNG job on the same GPU worker as normal UI jobs."""
+        return self.submit({**job, "kind": GENERATE, "_memory_only": True, "_reference_images": list(images)})
+
+    def submit_memory_enhance(self, job: Mapping[str, Any], images: list) -> str:
+        """Queue a transient rewrite; its input images never need filesystem paths."""
+        return self.submit({**job, "kind": ENHANCE, "_memory_only": True, "_reference_images": list(images)})
+
+    def take_memory_enhancement(self, job_id: str) -> dict:
+        with self._lock:
+            job = self._job(job_id)
+            if not job.memory_only or job.kind != ENHANCE or job.state != DONE:
+                raise ValueError("Transient enhancement is not ready")
+            result = dict(job.result or {})
+            job.result, job.text, job.prompt = None, "", ""
+            self._jobs.pop(job_id)
+        self._clear_memory_inputs(job)
+        return result
+
+    def take_memory_result(self, job_id: str) -> tuple[bytes, dict]:
+        with self._lock:
+            job = self._job(job_id)
+            if not job.memory_only or job.state != DONE or job.png_bytes is None:
+                raise ValueError("Transient image is not ready")
+            data, job.png_bytes = job.png_bytes, None
+            metadata = dict(job.result or {})
+            self._jobs.pop(job_id)
+        self._clear_memory_inputs(job)
+        return data, metadata
+
+    def abandon_memory(self, job_id: str) -> None:
+        """Cancel a disconnected request and release its data after GPU teardown."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or not job.memory_only:
+                return
+        self.cancel(job_id)
+        with self._lock:
+            job.abandoned = True
+            finished = job.state in FINAL_STATES
+            if finished:
+                job.png_bytes = None
+                job.result, job.text, job.prompt = None, "", ""
+                self._jobs.pop(job_id, None)
+        if finished:
+            self._clear_memory_inputs(job)
+
+    @staticmethod
+    def _clear_memory_inputs(job: _Job) -> None:
+        for image in job.reference_images:
+            image.close()
+        job.reference_images.clear()
 
     # ---- helpers (callers hold self._lock where noted) ---------------------------------------------
 
@@ -762,6 +825,8 @@ class Engine:
             self._emit(job, "state")
 
     def _jlog(self, job: _Job, msg: str) -> None:
+        if job.memory_only:
+            return
         now = time.time()
         stamp = datetime.datetime.fromtimestamp(now).isoformat(timespec="milliseconds")
         line = f"{stamp} +{now - job.created_at:.2f}s {msg}"
@@ -790,7 +855,15 @@ class Engine:
             raise ValueError(f"mode must be 't2i' or 'edit', got {mode!r}")
         prompt = self._prompt(job)
         ref = job.get("ref_image_path")
-        if mode == "edit" and not ref:
+        memory_only = job.get("_memory_only") is True
+        memory_refs = job.get("_reference_images") or []
+        if memory_only:
+            from PIL import Image
+            if not isinstance(memory_refs, list) or not all(isinstance(im, Image.Image) for im in memory_refs):
+                raise ValueError("Transient references must be decoded images")
+            if ref or job.get("ref_image_paths") or job.get("output_path"):
+                raise ValueError("Transient jobs cannot use file paths")
+        if mode == "edit" and not ref and not (memory_only and memory_refs):
             raise ValueError("edit mode requires ref_image_path")
         if "variant" in job:
             raise ValueError("variant was replaced by image_model/text_encoder")
@@ -798,13 +871,9 @@ class Engine:
         # Resolved now, so a queued job keeps its parts even if the settings change before it runs.
         image_model = job.get("image_model") or defaults.get("image_model") or models.DEFAULT_IMAGE_MODEL
         text_encoder = job.get("text_encoder") or defaults.get("text_encoder") or models.DEFAULT_TEXT_ENCODER
-        if image_model not in models.IMAGE_MODELS:
-            raise ValueError(f"unknown image_model {image_model!r}; expected one of {sorted(models.IMAGE_MODELS)}")
-        if text_encoder not in models.TEXT_ENCODERS:
-            raise ValueError(f"unknown text_encoder {text_encoder!r}; expected one of {sorted(models.TEXT_ENCODERS)}")
-        if text_encoder != image_model:
-            raise ValueError("Choose a complete suite; model parts cannot be mixed")
-        if not job.get("output_path"):
+        from imageatelier import custom_models
+        custom_models.validate_pair(image_model, text_encoder)
+        if not memory_only and not job.get("output_path"):
             raise ValueError("output_path is required")
         seed = job.get("seed")
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
@@ -822,7 +891,9 @@ class Engine:
         max_refs = max(0, min(MAX_REFS_CAP, max_refs if isinstance(max_refs, int) and not isinstance(max_refs, bool) else DEFAULT_MAX_REFS))
         if len(refs) > max_refs:
             raise ValueError(f"max {max_refs} references enabled (got {len(refs)})")
-        total = len(refs) + (1 if mode == "edit" else 0)
+        # Memory API clients have an independent ten-image budget, including an edit's source.
+        # The UI's max_refs setting continues to limit disk-backed project references.
+        total = len(memory_refs) if memory_only else len(refs) + (1 if mode == "edit" else 0)
         if total > MAX_IMAGES:
             raise ValueError(f"at most {MAX_IMAGES} images per generation (current image + references); got {total}")
         missing = [r for r in refs if not Path(r).is_file()]
@@ -831,11 +902,15 @@ class Engine:
         ref_detail = job.get("ref_detail") or defaults.get("ref_detail") or DEFAULT_REF_DETAIL
         if ref_detail not in REF_DETAILS:
             raise ValueError(f"ref_detail must be one of {list(REF_DETAILS)}, got {ref_detail!r}")
+        width, height = job.get("width"), job.get("height")
+        if memory_only and (width is not None or height is not None):
+            if not all(isinstance(v, int) and not isinstance(v, bool) and 256 <= v <= 2048 and v % 32 == 0 for v in (width, height)):
+                raise ValueError("width and height must both be multiples of 32 between 256 and 2048")
         return _Job(
             id=uuid.uuid4().hex[:12],
             prompt=prompt,
             mode=mode,
-            ref_image_path=str(ref) if mode == "edit" else None,
+            ref_image_path=str(ref) if mode == "edit" and not memory_only else None,
             ref_image_paths=[str(r) for r in refs],
             ref_detail=ref_detail,
             seed=seed,
@@ -843,7 +918,11 @@ class Engine:
             turbo=turbo,
             image_model=image_model,
             text_encoder=text_encoder,
-            output_path=str(job["output_path"]),
+            output_path="" if memory_only else str(job["output_path"]),
+            memory_only=memory_only,
+            reference_images=list(memory_refs),
+            output_width=width if memory_only else None,
+            output_height=height if memory_only else None,
             transparent=bool(job.get("transparent", False)),
         )
 
@@ -853,7 +932,19 @@ class Engine:
             raise ValueError(f"enhance mode must be 't2i' or 'i2i', got {mode!r}")
         prompt = self._prompt(job)
         ref = job.get("ref_image_path")
-        if mode == "i2i" and not ref:
+        memory_only = job.get("_memory_only") is True
+        memory_refs = job.get("_reference_images") or []
+        if memory_only:
+            from PIL import Image
+            if not isinstance(memory_refs, list) or not all(isinstance(im, Image.Image) for im in memory_refs):
+                raise ValueError("Transient references must be decoded images")
+            if ref or job.get("ref_image_paths") or job.get("output_path"):
+                raise ValueError("Transient jobs cannot use file paths")
+            if len(memory_refs) > MAX_IMAGES:
+                raise ValueError(f"at most {MAX_IMAGES} images per enhancement")
+            if mode == "t2i" and memory_refs:
+                raise ValueError("Use i2i enhancement when supplying reference images")
+        if mode == "i2i" and not ref and not (memory_only and memory_refs):
             raise ValueError("i2i enhance requires ref_image_path")
         quant, thinking = job.get("quant"), job.get("thinking")
         max_new_tokens, language = job.get("max_new_tokens"), job.get("language")
@@ -865,13 +956,21 @@ class Engine:
             _validate_max_new_tokens(max_new_tokens)
         if language is not None and language not in PE_LANGUAGES:
             raise ValueError(f"language must be one of {PE_LANGUAGES}, got {language!r}")
+        from imageatelier import custom_models
+        settings = dict(self._settings_provider() or {})
+        rewriter = (job.get('rewriter') if 'rewriter' in job else settings.get(f'custom_pe_{mode}')) or None
+        if rewriter is not None:
+            custom_models.get(rewriter, f'pe_{mode}', ready=True)
         return _Job(
             id=uuid.uuid4().hex[:12],
             kind=ENHANCE,
             prompt=prompt,
             mode=mode,
-            ref_image_path=str(ref) if mode == "i2i" else None,
+            ref_image_path=str(ref) if mode == "i2i" and not memory_only else None,
+            memory_only=memory_only,
+            reference_images=list(memory_refs),
             quant=quant,
+            rewriter=rewriter,
             thinking=thinking,
             max_new_tokens=max_new_tokens,
             language=language,
@@ -889,6 +988,8 @@ class Engine:
         self._emit(job, "state")
 
     def _emit(self, job: _Job, kind: str) -> None:
+        if job.memory_only:
+            return
         with self._lock:
             event = self._snap(job)
         event["type"] = kind
@@ -1037,6 +1138,13 @@ class Engine:
                 self._jlog(job, self._summary(state, fields))
                 # Emitted before the next job is dequeued, so job N's terminal event precedes job N+1's start.
                 self._set_state(job, state, **fields)
+                if job.memory_only:
+                    with self._lock:
+                        if state != DONE or job.abandoned:
+                            job.png_bytes = None
+                        if job.abandoned:
+                            job.result, job.text, job.prompt = None, "", ""
+                            self._jobs.pop(job.id, None)
         finally:
             self._mm.drop()
 
@@ -1087,6 +1195,8 @@ class Engine:
                 self._maybe_offload_text_encoder()
         except Exception:  # noqa: BLE001
             log.exception("cleanup after job %s failed", job.id)
+        if job.memory_only:
+            self._clear_memory_inputs(job)
         gc.collect()
         mx.clear_cache()
         dt = time.perf_counter() - t0
@@ -1116,7 +1226,7 @@ class Engine:
             steps = settings.get("default_steps", DEFAULT_STEPS)
         try:
             validate_steps(steps, job.turbo)
-            if job.mode == "edit" and not Path(job.ref_image_path).is_file():
+            if job.mode == "edit" and not job.memory_only and not Path(job.ref_image_path).is_file():
                 raise ValueError(f"reference image not found: {job.ref_image_path}")
             for r in job.ref_image_paths:
                 if not Path(r).is_file():
@@ -1125,7 +1235,7 @@ class Engine:
         except ValueError as exc:
             return FAILED, {"error": str(exc)}
         resolution = int(settings.get("resolution", DEFAULT_RESOLUTION))
-        reference_resolution = resolve_reference_resolution(job.ref_detail, len(job.ref_image_paths), resolution)
+        reference_resolution = resolve_reference_resolution(job.ref_detail, max(0, len(job.reference_images) - (1 if job.mode == "edit" else 0)) if job.memory_only else len(job.ref_image_paths), resolution)
         with self._lock:
             job.seed, job.steps, job.reference_resolution = seed, steps, reference_resolution
 
@@ -1191,12 +1301,18 @@ class Engine:
         if job.cancel_requested:
             return CANCELLED, {}
 
-        out = Path(job.output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_name(out.name + ".tmp")
         image = finalize_alpha(image, job.transparent)
-        image.save(tmp, format="PNG")
-        os.replace(tmp, out)
+        if job.memory_only:
+            with io.BytesIO() as buffer:
+                image.save(buffer, format="PNG")
+                job.png_bytes = buffer.getvalue()
+            out = None
+        else:
+            out = Path(job.output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            tmp = out.with_name(out.name + ".tmp")
+            image.save(tmp, format="PNG")
+            os.replace(tmp, out)
         result = {
             "transparent": job.transparent,
             "seed": seed,
@@ -1207,7 +1323,7 @@ class Engine:
             "width": image.width,
             "height": image.height,
             "mode": image.mode,
-            "output_path": str(out),
+            "output_path": str(out) if out is not None else None,
             "load_s": round(load_s, 3),
             "te_reload_s": round(te_reload_s, 3),
             "gen_s": round(gen_s, 3),
@@ -1235,6 +1351,17 @@ class Engine:
         from PIL import Image
 
         from imageatelier import sizes
+
+        if job.memory_only:
+            if job.output_width is not None:
+                size = {"width": job.output_width, "height": job.output_height}
+            elif job.mode == "edit" and job.reference_images:
+                w, h = job.reference_images[0].size
+                w, h = sizes.dimensions(resolution, w / h)
+                size = {"width": w, "height": h}
+            else:
+                size = {"width": resolution, "height": resolution}
+            return list(job.reference_images), size
 
         def dims(path: str) -> tuple[int, int]:
             with Image.open(path) as im:
@@ -1279,14 +1406,14 @@ class Engine:
             if language not in PE_LANGUAGES:
                 raise ValueError(f"pe_language must be one of {PE_LANGUAGES}, got {language!r}")
             _validate_max_new_tokens(max_new_tokens)
-            if job.mode == "i2i" and not Path(job.ref_image_path).is_file():
+            if job.mode == "i2i" and not job.memory_only and not Path(job.ref_image_path).is_file():
                 raise ValueError(f"reference image not found: {job.ref_image_path}")
         except ValueError as exc:
             return FAILED, {"error": str(exc)}
-        model_quant = quant
+        model_quant = job.rewriter if job.rewriter and job.rewriter.startswith("custom-") else quant
         with self._lock:
             job.quant, job.thinking, job.max_new_tokens, job.language = quant, thinking, max_new_tokens, language
-            job.rewriter = f"official-{quant}"
+            job.rewriter = model_quant if model_quant.startswith("custom-") else f"official-{quant}"
 
         mx.reset_peak_memory()
         try:
@@ -1300,17 +1427,19 @@ class Engine:
         from mlx_vlm import stream_generate
         from PIL import Image
 
-        image = None
-        if job.mode == "i2i":
-            src = Image.open(job.ref_image_path)
-            if src.mode in ("RGBA", "LA", "P"):
-                src = src.convert("RGBA")
-                image = Image.new("RGB", src.size, (255, 255, 255))
-                image.paste(src, mask=src.split()[3])
-            else:
-                image = src.convert("RGB")
+        images = list(job.reference_images) if job.memory_only else []
+        if job.mode == "i2i" and not job.memory_only:
+            with Image.open(job.ref_image_path) as src:
+                if src.mode in ("RGBA", "LA", "P"):
+                    rgba = src.convert("RGBA")
+                    image = Image.new("RGB", rgba.size, (255, 255, 255))
+                    image.paste(rgba, mask=rgba.getchannel("A"))
+                    rgba.close()
+                else:
+                    image = src.convert("RGB")
+            images.append(image)
         user_text = job.prompt + (PE_ENGLISH_SUFFIX if language == "english" else "")
-        content = ([{"type": "image", "image": image}] if image is not None else []) + [
+        content = [{"type": "image", "image": image} for image in images] + [
             {"type": "text", "text": user_text}
         ]
         messages = [
@@ -1335,7 +1464,7 @@ class Engine:
             self._mm.model,
             processor,
             prompt,
-            image=[image] if image is not None else None,
+            image=images or None,
             max_tokens=max_new_tokens,
             **PE_SAMPLING,
         )
@@ -1380,6 +1509,9 @@ class Engine:
             # (mlx_vlm/generate/common.py:238-244); _teardown then syncs every stream again before the next job.
             stream.close()
             del stream
+            if not job.memory_only:
+                for image in images:
+                    image.close()
         t_end = time.perf_counter()
         gen_s = t_end - t0
         if cancelled:
