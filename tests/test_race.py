@@ -110,7 +110,7 @@ def test_done_implies_saved_and_run_event_precedes_done(app, engine, monkeypatch
 
     events, violations = asyncio.run(main())
     assert not violations, violations
-    kinds = [(e["event"], e["data"].get("state")) for e in events]
+    kinds = [(e["event"], e["data"].get("state")) for e in events if e["event"] in ("job", "run")]
     run_idx = next(i for i, k in enumerate(kinds) if k[0] == "run")
     done_idx = next(i for i, k in enumerate(kinds) if k == ("job", "done"))
     assert run_idx < done_idx, kinds

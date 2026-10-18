@@ -130,7 +130,7 @@ class TestEnhanceOptions:
         assert job["language"] == "english" and job["max_new_tokens"] == 8192
 
     def test_settings_changes_are_used(self, client, engine):
-        client.put("/api/settings", json={"pe_thinking": False, "pe_quant": "8bit",
+        client.put("/api/settings", json={"pe_thinking": False,
                                           "pe_language": "auto", "pe_max_new_tokens": 512})
         pid = new_project(client)["id"]
         enhance(client, pid)
@@ -140,7 +140,7 @@ class TestEnhanceOptions:
 
     def test_body_overrides_settings(self, client, engine):
         pid = new_project(client)["id"]
-        r = enhance(client, pid, thinking=False, quant="8bit", language="auto")
+        r = enhance(client, pid, thinking=False, language="auto")
         assert r.status_code == 202
         job = engine.submitted[-1]
         assert job["thinking"] is False and job["quant"] == "8bit" and job["language"] == "auto"
@@ -167,16 +167,13 @@ class TestEnhanceOptions:
         pe_ready["t2i-8bit"] = False
         pid = new_project(client)["id"]
         r = enhance(client, pid)
-        assert r.status_code == 409 and "t2i-8bit" in r.json()["detail"]
+        assert r.status_code == 409 and "suite" in r.json()["detail"]
         assert engine.submitted == []
 
-    def test_409_depends_on_mode(self, client, pe_ready):
-        pe_ready["i2i-8bit"] = False
+    def test_either_missing_enhancer_blocks_the_whole_suite(self, client, pe_ready):
         pid = new_project(client)["id"]
-        assert enhance(client, pid).status_code == 202  # t2i-8bit is fine
-        do_run(client, pid)
-        r = enhance(client, pid)
-        assert r.status_code == 409 and "i2i-8bit" in r.json()["detail"]
+        pe_ready["i2i-8bit"] = False
+        assert enhance(client, pid).status_code == 409
         pe_ready["i2i-8bit"] = True
         assert enhance(client, pid).status_code == 202
 
@@ -188,7 +185,7 @@ class TestPeSettings:
         assert (s["pe_thinking"], s["pe_quant"], s["pe_max_new_tokens"], s["pe_language"]) == (
             True, "8bit", 8192, "english")
 
-    @pytest.mark.parametrize("key,val", [("pe_quant", "8bit"), ("pe_language", "auto"),
+    @pytest.mark.parametrize("key,val", [("pe_language", "auto"),
                                          ("pe_language", "english"), ("pe_thinking", False),
                                          ("pe_max_new_tokens", 256), ("pe_max_new_tokens", 16384)])
     def test_valid(self, client, key, val):
@@ -208,41 +205,23 @@ class TestPeSettings:
     def test_pe_keys_dont_disturb_turbo_rules(self, client):
         client.put("/api/settings", json={"pe_language": "auto"})
         s = client.get("/api/settings").json()
-        assert s["turbo"] is True and s["steps"] == 6
+        assert s["turbo"] is False and s["steps"] == 40
 
 
 # ---- models list ----------------------------------------------------------------------------
 class TestModelsList:
-    def test_kinds(self, client, pe_ready):
-        lst = client.get("/api/models").json()
-        img = [m for m in lst if m["kind"] == "image"]
-        pe = [m for m in lst if m["kind"] == "pe"]
-        assert [m["name"] for m in img] == ["official-8bit"]
-        assert {m["name"] for m in lst if m["kind"] == "text_encoder"} == {"heretic-8bit", "official-8bit"}
-        assert {m["name"] for m in pe} == {"t2i-8bit", "i2i-8bit", "t2i-heretic-8bit", "i2i-heretic-8bit"}
-        te = [m for m in lst if m["kind"] == "text_encoder"]
-        assert len(lst) == len(img) + len(te) + len(pe)
-        # image parts, then text encoders, then enhancers
-        assert [m["kind"] for m in lst] == ["image"] * len(img) + ["text_encoder"] * len(te) + ["pe"] * len(pe)
-        official = [m for m in pe if "heretic" not in m["name"]]
-        assert len(official) == 2
-        assert len(img) == 1 and len(pe) == 4
-        for m in official:
-            assert {"mode", "quant", "repo", "approx_gb", "state"} <= set(m)
-            assert m["name"] == f"{m['mode']}-{m['quant']}"
-        sizes = {m["name"]: m["approx_gb"] for m in pe}
-        assert sizes["t2i-8bit"] == pytest.approx(10.5, abs=0.5) and sizes["t2i-heretic-8bit"] == pytest.approx(10.4) and sizes["i2i-heretic-8bit"] == pytest.approx(10.4)
+    def test_only_suites_are_listed(self, client):
+        rows = client.get("/api/models").json()
+        assert [m["name"] for m in rows] == ["bf16", "q8", "q6", "q4"]
+        assert all(m["kind"] == "suite" for m in rows)
 
-    def test_pe_status_reflects_readiness(self, client, pe_ready):
+    def test_enhancer_readiness_applies_to_whole_suite(self, client, pe_ready):
         pe_ready["i2i-8bit"] = False
-        pe = {m["name"]: m for m in client.get("/api/models").json() if m["kind"] == "pe"}
-        assert pe["i2i-8bit"]["state"] == "not_downloaded" and pe["t2i-8bit"]["state"] == "ready"
+        rows = {m["name"]: m for m in client.get("/api/models").json()}
+        assert rows["q8"]["state"] != "ready" and rows["q6"]["state"] == "ready"
 
-    def test_pe_download(self, client, pe_ready):
-        r = client.post("/api/models/pe/t2i-8bit/download")
-        assert r.status_code == 202 and r.json() == {"started": True}
-        assert pe_ready["started"] == ["t2i-8bit"]
-        assert client.post("/api/models/pe/nope/download").status_code == 404
+    def test_independent_enhancer_download_retired(self, client):
+        assert client.post("/api/models/pe/t2i-8bit/download").status_code == 410
 
 
 # ---- enhanced_from --------------------------------------------------------------------------
@@ -332,19 +311,19 @@ class TestEnhanceSse:
 
     def test_get_api_model_matches(self, client, engine):
         assert client.get("/api/model").json() == {"state": "unloaded", "key": None}
-        engine._resident = {"key": ["image", "official-8bit", "heretic-8bit", True], "state": "loaded"}
-        assert client.get("/api/model").json() == {"state": "loaded", "key": ["image", "official-8bit", "heretic-8bit", True]}
+        engine._resident = {"key": ["image", "official-8bit", "official-8bit", False], "state": "loaded"}
+        assert client.get("/api/model").json() == {"state": "loaded", "key": ["image", "official-8bit", "official-8bit", False]}
 
     def test_model_events_pass_through(self, app, engine):
         async def action(c):
-            engine.emit_model("loading", ["image", "official-8bit", "heretic-8bit", True])
-            engine.emit_model("loaded", ["image", "official-8bit", "heretic-8bit", True], load_s=1.5)
+            engine.emit_model("loading", ["image", "official-8bit", "official-8bit", False])
+            engine.emit_model("loaded", ["image", "official-8bit", "official-8bit", False], load_s=1.5)
             engine.emit_model("unloaded", None, active_bytes=123)
 
         events, _ = collect_events(app, action, lambda ev, _: len([e for e in ev if e["event"] == "model"]) >= 4)
         m = [e["data"] for e in events if e["event"] == "model"][1:]  # [0] is the on-connect event
         assert [x["state"] for x in m] == ["loading", "loaded", "unloaded"]
-        assert m[1]["key"] == ["image", "official-8bit", "heretic-8bit", True] and m[1]["load_s"] == 1.5
+        assert m[1]["key"] == ["image", "official-8bit", "official-8bit", False] and m[1]["load_s"] == 1.5
         assert m[2]["active_bytes"] == 123
 
     def test_enhance_job_events_carry_phase_tokens_text(self, app, engine):
@@ -434,8 +413,8 @@ class TestOneModelRule:
             job["ref_image_path"] = h.ref
         return h.engine.submit(job)
 
-    def _gen(self, h, turbo=True):
-        return h.engine.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": turbo,
+    def _gen(self, h, quant="8bit"):
+        return h.engine.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": False, "image_model": f"official-{quant}", "text_encoder": f"official-{quant}",
                                 "output_path": str(h.out)})
 
     def test_enhance_enhance_generate_enhance(self, real_engine):
@@ -443,7 +422,7 @@ class TestOneModelRule:
         ids = [self._enh(h), self._enh(h), self._gen(h), self._enh(h, "i2i")]
         snaps = [_wait(h.engine, i) for i in ids]
         assert [s["state"] for s in snaps] == ["done"] * 4, snaps
-        assert h.loads == [("pe_t2i", "8bit"), ("image", "official-8bit", "heretic-8bit", True), ("pe_i2i", "8bit")]
+        assert h.loads == [("pe_t2i", "8bit"), ("image", "official-8bit", "official-8bit", False), ("pe_i2i", "8bit")]
         loaded = [tuple(e["key"]) for e in h.events if e.get("type") == "model" and e["state"] == "loaded"]
         assert loaded == h.loads
         assert snaps[0]["result"]["rewritten_prompt"] == "better"
@@ -468,21 +447,21 @@ class TestOneModelRule:
         _wait(h.engine, self._enh(h))
         _wait(h.engine, self._enh(h, "i2i"))  # other rewriter mode -> other key
         _wait(h.engine, self._gen(h))
-        _wait(h.engine, self._gen(h, turbo=False))  # same variant, turbo off -> other image key
-        _wait(h.engine, self._gen(h, turbo=False))  # same key again -> no reload
-        assert h.loads == [("pe_t2i", "8bit"), ("pe_i2i", "8bit"), ("image", "official-8bit", "heretic-8bit", True), ("image", "official-8bit", "heretic-8bit", False)]
+        _wait(h.engine, self._gen(h, quant="6bit"))  # a different suite -> another image key
+        _wait(h.engine, self._gen(h, quant="6bit"))  # same key again -> no reload
+        assert h.loads == [("pe_t2i", "8bit"), ("pe_i2i", "8bit"), ("image", "official-8bit", "official-8bit", False), ("image", "official-6bit", "official-6bit", False)]
 
     def test_not_downloaded_pe_leaves_current_model_resident(self, real_engine):
         h = real_engine
         _wait(h.engine, self._gen(h))
-        assert h.loads == [("image", "official-8bit", "heretic-8bit", True)]
+        assert h.loads == [("image", "official-8bit", "official-8bit", False)]
         n_events = len(h.events)
         h.not_ready.add(("i2i", "8bit"))
         snap = _wait(h.engine, self._enh(h, "i2i"))
         assert snap["state"] == "failed" and "not downloaded" in snap["error"]
-        assert h.loads == [("image", "official-8bit", "heretic-8bit", True)]
-        assert h.engine.resident() == {"key": ["image", "official-8bit", "heretic-8bit", True], "state": "loaded"}
+        assert h.loads == [("image", "official-8bit", "official-8bit", False)]
+        assert h.engine.resident() == {"key": ["image", "official-8bit", "official-8bit", False], "state": "loaded"}
         assert not [e for e in h.events[n_events:] if e.get("type") == "model"]
         # and the image model is still usable without a reload
         _wait(h.engine, self._gen(h))
-        assert h.loads == [("image", "official-8bit", "heretic-8bit", True)]
+        assert h.loads == [("image", "official-8bit", "official-8bit", False)]

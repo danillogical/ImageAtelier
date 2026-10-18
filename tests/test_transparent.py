@@ -208,7 +208,7 @@ def eng(monkeypatch, tmp_path):
         state["image"] = image
         n[0] += 1
         out = tmp_path / f"out{n[0]}.png"
-        jid = e.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": True,
+        jid = e.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": False,
                         "output_path": str(out), **extra})
         end = time.time() + 15
         while time.time() < end:

@@ -1,0 +1,92 @@
+EVENT state queued enhance None
+INFO:imageatelier.engine:GPU utilization 0% before starting job be2539014152
+EVENT state loading enhance None
+EVENT model loading None None
+EVENT model loaded None None
+RUNTIME_QUANTIZATION ('pe_t2i', '8bit') {"pe_t2i": {"quantized_layers": 250, "bits": [8], "groups": [64], "parameter_dtypes": {"mlx.core.bfloat16": 1010, "mlx.core.uint32": 250}, "vision_quantized_layers": 0}}
+EVENT state running enhance thinking
+PE_PROGRESS thinking 109
+PE_PROGRESS thinking 217
+PE_PROGRESS thinking 324
+PE_PROGRESS thinking 432
+PE_PROGRESS thinking 540
+PE_PROGRESS thinking 648
+PE_PROGRESS thinking 756
+PE_PROGRESS thinking 864
+PE_PROGRESS writing 972
+PE_PROGRESS writing 1080
+PE_PROGRESS writing 1188
+PE_PROGRESS writing 1295
+PE_PROGRESS writing 1400
+PE_PROGRESS writing 1503
+PE_PROGRESS writing 1610
+PE_PROGRESS writing 1716
+PE_PROGRESS writing 1818
+PE_PROGRESS writing 1923
+EVENT state done enhance writing
+ENHANCED_PROMPT A warm, cinematic street-level photograph shows the exterior of a small independent bakery at dusk or early evening after rain. Across the upper-left portion of the storefront, a large rectangular wooden-framed sign with a dark black-brown background and aged tan lettering reads "NIGHT OWL BAKERY" in prominent serif capitals. The sign has an ornate, slightly weathered border with curved decorative corners, mounted above the window and door on a dark, textured building façade. Warm amber light from the bakery interior spills outward, contrasting with the cool blue outdoor dusk tones. Behind and above the sign, the background contains softly blurred trees, shadowed building details, and small round streetlights, creating a shallow-depth-of-field bokeh effect.
+
+Below the sign, the storefront is framed in dark, worn wood and black metal trim. A large rectangular display window occupies the left-center area, bordered by black painted wood with visible grain, scratches, and glossy rain-darkened edges. Inside the bakery, shelves and counter areas glow with golden pendant lighting. Several breads, pastries, jars, boxes, framed items, and small menu-like papers are visible on the back shelves, though the tiny internal labels are too blurred to read clearly. A hanging pendant lamp with a warm cream-colored shade is visible near the upper center-left inside the shop, with another smaller warm light farther right. Near the lower-right portion of the window, a pale cake or display box bears the handwritten-style label "Apple Cake" in dark text. The window glass is slightly reflective and speckled with moisture, showing reflections of trees, warm lights, and the rainy street.
+
+To the right of the window is a dark wooden bakery door with vertical panels, black-painted framing, glass panes, and a brass-colored handle. A small square sign or glass label on the door contains the letter "B" in a dark serif character on a pale background. Above and beside the doorway, decorative molding and trim add an old-fashioned neighborhood-bakery character. At the lower-left side of the storefront, a large rectangular wooden planter sits on the wet sidewalk, filled with green leafy plants and small pale flowers. The planter has a weathered brown surface and aligns with the bakery’s rustic, vintage aesthetic. Near the door, a smaller wooden planter holds clustered pink, white, and yellow flowers, placed on or beside the step leading into the bakery. The steps are dark, wet wood, with glossy highlights from rain and warm shop light.
+
+On the right side of the storefront, an adult woman stands in three-quarter profile facing toward the bakery door and window. She appears to be in her 30s or 40s, with a slim-to-average build, light-to-medium skin tone, and medium-length curly brown hair falling around her face. Her face is partially visible in profile, with a calm, reflective expression as she looks toward the warmly lit entrance. She wears a mustard-yellow raincoat with a matte, slightly wrinkled texture, a dark gray knit beanie, dark leggings or slim pants, and black ankle boots with a polished finish. She holds a red umbrella above and slightly behind herself; the umbrella is open, medium-large, semicircular in silhouette, with visible ribs and wet raindrops catching the warm light along its dark red petal edges. The umbrella overlaps the warm window light and dark storefront, forming a strong visual shape against the cozy interior glow.
+
+A golden retriever sits beside exactly three orange pumpkins at the right edge of the image, positioned near the woman and the bakery steps. The dog is large, golden-colored, and fluffy, with soft feathering around the ears, chest, and legs. Its head is turned slightly to the left, looking toward the woman and the bakery, and its expression appears gentle and attentive. Three round orange pumpkins sit on the wet pavement in front of the dog, clustered together near the woman’s feet. Their surfaces are matte, ribbed, and warmly lit, with bright orange highlights and darker shadowed grooves.
+
+The ground across the foreground is made of wet cobblestones or brick pavers, with irregular rectangular shapes and glossy reflections. The warm amber light from the bakery window stretches across the pavement in shimmering streaks, while cooler blue-gray shadows suggest rain-soaked evening air. On the far right background, more warm streetlights and storefront lights appear as blurred circular glows against dark trees and architecture. The overall composition is balanced between the bakery sign and window on the left and the woman, dog, umbrella, and pumpkins on the right. The image has a realistic photographic style with cinematic color grading, shallow depth of field, rich contrast between warm interior light and cool rainy exterior tones, and a cozy autumn atmosphere.
+EVENT state queued generate None
+INFO:imageatelier.engine:GPU utilization 0% before starting job fa9455ddb5b7
+EVENT state loading generate None
+EVENT model unloaded None None
+EVENT model loading None None
+EVENT model loaded None None
+RUNTIME_QUANTIZATION ('image', 'official-8bit', 'official-8bit', False) {"transformer": {"quantized_layers": 228, "bits": [8], "groups": [64], "parameter_dtypes": {"mlx.core.uint32": 228, "mlx.core.bfloat16": 525}, "vision_quantized_layers": 0}, "text_encoder": {"quantized_layers": 343, "bits": [8], "groups": [64], "parameter_dtypes": {"mlx.core.uint32": 343, "mlx.core.bfloat16": 1091, "mlx.core.float32": 2}, "vision_quantized_layers": 90}, "vae": {"quantized_layers": 0, "bits": [], "groups": [], "parameter_dtypes": {"mlx.core.float32": 238}, "vision_quantized_layers": 0}}
+IMAGE_PHASE load {"pe_job_before_cleanup_s": 37.58097741706297, "pe_prefill_to_first_token_s": 1.093934000004083, "pe_thinking_decode_s": 17.187571791000664, "pe_answer_decode_s": 17.875697584007867}
+EVENT state running generate None
+IMAGE_PHASE encode {"pe_job_before_cleanup_s": 37.58097741706297, "pe_prefill_to_first_token_s": 1.093934000004083, "pe_thinking_decode_s": 17.187571791000664, "pe_answer_decode_s": 17.875697584007867, "prompt_encoding_s": 0.46279862499795854}
+STEP 1 40 2.236517749959603
+STEP 2 40 1.9530336250318214
+STEP 3 40 1.9398974169744179
+STEP 4 40 1.9647550000809133
+STEP 5 40 1.9854288749629632
+STEP 6 40 1.9954047499923036
+STEP 7 40 2.0066106249578297
+STEP 8 40 2.018057500012219
+STEP 9 40 2.0300532080000266
+STEP 10 40 2.038031000061892
+STEP 11 40 2.0321858329698443
+STEP 12 40 2.044702042010613
+STEP 13 40 2.0526072919601575
+STEP 14 40 2.0483769580023363
+STEP 15 40 2.051174958003685
+STEP 16 40 2.0523230839753523
+STEP 17 40 2.0679631660459563
+STEP 18 40 2.06287316698581
+STEP 19 40 2.0685387919656932
+STEP 20 40 2.066829708055593
+STEP 21 40 2.071140000014566
+STEP 22 40 2.073021417018026
+STEP 23 40 2.0834313749801368
+STEP 24 40 2.081205290975049
+STEP 25 40 2.0852892090333626
+STEP 26 40 2.0842264159582555
+STEP 27 40 2.081936917034909
+STEP 28 40 2.086762582999654
+STEP 29 40 2.088404499925673
+STEP 30 40 2.0940557090798393
+STEP 31 40 2.0903934999369085
+STEP 32 40 2.087690416024998
+STEP 33 40 2.095074624987319
+STEP 34 40 2.103227874962613
+STEP 35 40 2.161276667029597
+STEP 36 40 2.236272042035125
+STEP 37 40 2.203957207966596
+STEP 38 40 2.121063166996464
+STEP 39 40 2.1323682910297066
+STEP 40 40 2.121885291999206
+IMAGE_PHASE denoise {"pe_job_before_cleanup_s": 37.58097741706297, "pe_prefill_to_first_token_s": 1.093934000004083, "pe_thinking_decode_s": 17.187571791000664, "pe_answer_decode_s": 17.875697584007867, "prompt_encoding_s": 0.46279862499795854, "text_encoder_offload_s": 0.0739784580655396, "denoising_s": 82.89818079199176}
+IMAGE_PHASE decode {"pe_job_before_cleanup_s": 37.58097741706297, "pe_prefill_to_first_token_s": 1.093934000004083, "pe_thinking_decode_s": 17.187571791000664, "pe_answer_decode_s": 17.875697584007867, "prompt_encoding_s": 0.46279862499795854, "text_encoder_offload_s": 0.0739784580655396, "denoising_s": 82.89818079199176, "vae_decode_and_pixel_conversion_s": 1.9625414160545915}
+EVENT state done generate None
+COMPLETE q8 seconds 128.3844991250662
+EVENT model unloaded None None

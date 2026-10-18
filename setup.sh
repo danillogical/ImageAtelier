@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time (and re-runnable) setup: Python env, local CA, HTTPS certificate, optional model download.
-#   ./setup.sh [--trust-local] [--model 8bit|none]
+#   ./setup.sh [--trust-local] [--model bf16|none]
 set -euo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=lan.sh
@@ -18,7 +18,7 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-case "$MODEL" in 8bit|none) ;; *) echo "error: --model must be 8bit or none" >&2; exit 2 ;; esac
+case "$MODEL" in bf16|none) ;; *) echo "error: --model must be bf16 or none" >&2; exit 2 ;; esac
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -92,23 +92,19 @@ if [[ "$MODEL" != none ]]; then
   step "Downloading model: $MODEL (this can take a while)"
   .venv/bin/python - "$MODEL" <<'PY'
 import time
-from imageatelier import models
+from imageatelier import suites
 
-parts = [("image", "official-8bit", models.image_status, models.start_image_download, models.is_image_downloading),
-         ("text encoder", "heretic-8bit", models.te_status, models.start_te_download, models.is_te_downloading)]
-for label, name, status, start, busy in parts:
-    if status(name)["state"] == "ready":
-        print(f"{label} {name} already downloaded"); continue
-    start(name)
-    while busy(name):
-        s = status(name)
-        done, total = s.get("bytes_done", 0), s.get("bytes_total")
-        print(f"  {label}: {done/1e9:.1f} / {total/1e9:.1f} GB" if total else f"  {label}: {done/1e9:.1f} GB", flush=True)
-        time.sleep(10)
-    s = status(name)
-    if s["state"] != "ready" or s.get("error"):
-        print(f"{label} download failed:", s.get("error") or s["state"]); raise SystemExit(1)
-    print(f"{label} {name} ready")
+suites.start_download()
+while suites.status("bf16")["state"] in ("downloading", "retrying"):
+    status = suites.status("bf16")
+    done, total = status.get("bytes_done", 0), status.get("bytes_total")
+    print(f"  BF16 suite: {done/1e9:.1f} / {total/1e9:.1f} GB" if total else "  Starting BF16 suite download...", flush=True)
+    time.sleep(10)
+status = suites.status("bf16")
+if status["state"] != "ready":
+    print("BF16 suite download failed:", status.get("error") or status["state"])
+    raise SystemExit(1)
+print("Complete BF16 suite ready; use Settings to convert Q8, Q6 or Q4.")
 PY
 fi
 

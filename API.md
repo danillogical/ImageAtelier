@@ -12,10 +12,10 @@ GET    /api/projects/{pid}               -> project + runs:[run...] (ascending) 
 PATCH  /api/projects/{pid} {name?, current_run?, style?} -> project ; current_run must be an existing run (400 otherwise); style see "Art styles"
 GET    /api/styles                       -> [{id, label, description, snippet, keep, custom?}] the art style presets (see "Art styles")
 DELETE /api/projects/{pid}               -> 204 (removes folder)
-POST   /api/projects/{pid}/runs {prompt, seed?, steps?, turbo?, transparent?, use_enhanced?, image_model?, text_encoder?, enhanced_from?}
+POST   /api/projects/{pid}/runs {prompt, seed?, steps?, model_suite?, transparent?, use_enhanced?, enhanced_from?}
        -> 202 {job_id, run_reserved: N, mode}
        mode = "t2i" if the project has no current_run else "edit" with ref = current_run's png; parent_run = current_run.
-       Unspecified steps/turbo/image_model/text_encoder come from settings. 400 on validation error (message from engine/settings; a legacy `variant` field is 400 "variant was replaced by image_model/text_encoder"). 409 if a part isn't ready (plain-words message naming it; see below).
+       Omitted steps/model_suite come from settings. 400 on invalid input or independent part overrides; 409 unless the whole selected suite is ready.
        On job done: write runs/NNNN.json(+png already written by the engine to output_path)+thumb, set project.current_run=N, updated_at=now.
        On failed/cancelled: no run files remain (delete any partial png); the reserved number may be skipped.
 GET    /api/jobs                         -> active+recent jobs (snapshots)
@@ -38,24 +38,14 @@ POST   /api/projects/{pid}/enhance-and-generate {prompt, transparent?, seed?, th
 GET    /api/events                       -> text/event-stream; events: `job` (engine snapshot incl. state/step/total_steps/project_id/run), `run` (new run json once saved), `download` (models status while downloading, ~1/s), `log` ({job_id, line}), `style` ({project_id, style}; see "Art styles"), `serverlog` ({line}; only with `?serverlog=1`). Send a comment ping every 15 s.
 GET    /api/settings                     -> settings
 PUT    /api/settings {partial}           -> settings (validated as above; 400 on error)
-GET    /api/models                       -> [{kind:"image", name, label, approx_gb, state, turbo_lora_ready, ...}, {kind:"text_encoder", name, label, approx_gb, source:"hf"|"local", state, hint?, ...}, {kind:"pe", name, mode, quant, variant, source, approx_gb, state, ...}]
-POST   /api/models/image/{name}/download         -> 202 {started: bool}   (image part + turbo add-on; 404 if unknown)
-POST   /api/models/text_encoder/{name}/download  -> 202 {started: bool}   (404 if unknown; 409 with the copy hint for a local encoder)
-DELETE /api/models/image/{name}          -> {deleted: true, freed_bytes}   (image part + turbo LoRA from the HF cache; a text encoder sharing the repo is kept)
-DELETE /api/models/text_encoder/{name}   -> {deleted: true, freed_bytes}
-DELETE /api/models/pe/{name}             -> {deleted: true, freed_bytes}   (the <quant>/ weights + system_prompt.txt)
-       freed_bytes is 0 if nothing was downloaded. 404 if unknown. 409 (message says why) for a local part, while a
-       download touching the same repo runs, or while any job is queued/held/running/paused/cancelling. A resident
-       model is unloaded first (a "model" unloaded event); afterwards a "download" event carries the refreshed list.
-GET    /api/projects/{pid}/runs/{n}/image -> PNG ; /thumb -> webp
-POST   /api/projects/{pid}/enhance {prompt, thinking?, quant?, language?}
-       -> 202 {job_id, mode}   (prompt enhancer; NOT a run: nothing is saved to the project)
-       mode = "t2i" if the project has no current_run else "i2i" with ref = current_run's png (pinned at submit).
-       Unspecified options come from settings (pe_*). 400 on an empty prompt / bad option. 409 if the enhancer
-       for that mode+quant isn't downloaded (message names it, e.g. "prompt enhancer 't2i-8bit' is not downloaded").
-       POST /runs additionally accepts an optional `enhanced_from` (the user's original text); stored in the run json (null otherwise).
+GET    /api/models                       -> [{kind:"suite", name:"bf16"|"q8"|"q6"|"q4", label, state, recommended, ...}]
+       Recommended: BF16 at >=48 GiB physical RAM, Q8 at 32–47 GiB, none below 32 GiB (6 GB overhead policy).
+POST   /api/models/bf16/download         -> 202 {started: bool}; downloads all three pinned official source snapshots
+POST   /api/models/bf16/pause            -> 202 {paused: bool}; saves progress and disables automatic continuation
+POST   /api/models/bf16/resume           -> 202 {started: bool}; resumes saved progress (also retries a failed download)
+POST   /api/models/{name}/convert        -> 202 {started: bool}; 409 until the full BF16 suite is ready or another conversion runs
+       Per-part download/deletion endpoints return 410. Suite conversion is local, offline and atomic.
 GET    /api/model                        -> {state: "loading"|"loaded"|"unloaded", key: [...]|null}   (the one resident model)
-POST   /api/models/pe/{name}/download    -> 202 {started: bool}   (name e.g. "t2i-8bit"; 404 if unknown)
 GET    /                                 -> static index.html ; other static paths served from imageatelier/static
 ```
 
@@ -77,13 +67,12 @@ Image URLs inside JSON use these routes.
   are added (`/api/projects/{pid}/runs/{n}/image` and `/thumb`). `seed` and `steps` are the resolved values.
 - **Gallery `latest`** describes the project's `current_run` (the image the next prompt will edit), or `null`
   if the project has no runs. `run_count` is the number of saved runs.
-- **Settings** keys and defaults: `image_model "official-8bit"`, `text_encoder "heretic-8bit"`, `turbo true`, `steps 6`, `low_memory true`,
-  `vae_tiling false`, `resolution 1024` (int, 256..2048, **a multiple of 32**: `resolution must be a multiple of 32` is a 400), plus the `pe_*` keys below. Rules: `image_model` and `text_encoder` must be known names (`text_encoder` is `"heretic-8bit"` or `"official-8bit"`); `variant` is gone (a PUT with it is 400 "variant was replaced by image_model/text_encoder"); turbo
-  requires `steps` in {6, 8}; non-turbo requires 2 <= `steps` <= 100. If a PUT changes `turbo` without
-  `steps`, `steps` resets to 6 (turbo) or 40 (non-turbo). Unknown keys are a 400. A failed PUT changes nothing.
-- **Run request defaults:** omitted `turbo`, `image_model` and `text_encoder` come from settings. Omitted `steps` comes from
-  settings if the effective `turbo` equals the settings' `turbo`, otherwise the mode default (6 / 40).
-  `prompt` must be non-empty. A part that is not ready (not downloaded, not installed, or still downloading) is 409, with a plain message such as "The text encoder (Official, 8-bit) isn't installed. Copy the folder ..."; turbo without the turbo add-on is 409 too.
+- **Settings:** `model_suite` (`bf16`, `q8`, `q6`, `q4`; default `q8`), `steps` (2–100; default 40),
+  `low_memory true`, `vae_tiling false`, `resolution 1024` (256–2048, multiple of 32), and prompt/reference preferences.
+  A suite must be ready before switching to it. `image_model`, `text_encoder`, `pe_quant`, `pe_variant` and `turbo` in
+  GET responses are derived read-only compatibility metadata. Independent choices in PUT are rejected.
+- **Run defaults:** steps and suite come from settings. `model_suite` may select another complete ready suite for one run.
+  Turbo and independent component overrides are rejected. Missing any of the five suite components returns 409.
 - **Run numbers** start at 1 and increase per project; `run_reserved` is returned immediately. Numbers of
   failed, cancelled, or rejected submissions may be skipped. A run exists once its `.json` exists.
 - **Events** (`text/event-stream`, `event: <name>` / `data: <json>`): `job` on every engine state or
@@ -110,17 +99,18 @@ Image URLs inside JSON use these routes.
   *leaves it loaded*, so repeated enhancing is fast. The image model is loaded only when a run executes (which
   unloads the rewriter), and the next enhance swaps back. Each swap emits `model` events (below).
 - **`model` SSE event**: `{type:"model", state:"loading"|"loaded"|"unloaded", key:[...]|null, load_s, ...}` with keys
-  `["image", image_model, text_encoder, turbo]`, `["pe_t2i", quant]` (or `["pe_t2i", "heretic-8bit"]`) or `["pe_i2i", quant]`. Unloads add `active_bytes`; a failed
+  `["image", image_model, text_encoder, false]`, `["pe_t2i", quant]` or `["pe_i2i", quant]`. Unloads add `active_bytes`; a failed
   load is an `unloaded` event with `error`. The first event on every `/api/events` connection is a `model` event
   with the current resident state, and `GET /api/model` returns the same.
-- **Models list and downloads.** `GET /api/models` returns the image parts (`kind: "image"`), the text encoders (`kind: "text_encoder"`),
-  then the official enhancers `t2i-8bit` and `i2i-8bit` (plus the local Heretic entry below)
-  (`kind: "pe"`; about 10.5 GB each). Status fields are `state`
-  (`ready`|`downloading`|`not_downloaded`), `bytes_done`/`bytes_total` while downloading, and `error`. The
-  `download` SSE event carries this whole list (both kinds, keyed by `kind` + `name`).
-- **Enhancer settings** (same validation rules as the others; unknown values are a 400): `pe_quant` is **fixed at
-  `"8bit"`** (kept as a key for compatibility; 4-bit was removed, and `"4bit"` is now a 400); `pe_thinking` boolean, default `true` (slower, usually better rewrites); `pe_max_new_tokens`
-  int 256..16384, default 8192 (edit rewrites can think ~4k tokens); `pe_language` `"english"` (default) | `"auto"`; `pe_variant` `"official"` (default) | `"heretic"`.
+- **Suite list and events:** `GET /api/models` and `download` SSE events carry the four whole-suite rows.
+  BF16 states are `not_downloaded`, `downloading`, `retrying`, `paused`, `failed`, `ready`; conversions use `not_converted`, `converting`, `ready`.
+  Downloads report `bytes_done`, `bytes_total`, and `retry_in` (seconds during retry backoff).
+  After 120 seconds without progress the worker restarts; transient failures retry with 5–60 second backoff.
+  Running intent and partial files survive app restarts; user-paused downloads never auto-resume.
+  Download progress uses `bytes_done`/`bytes_total`. Conversion progress uses `phase`; failures use `error`.
+  Quantized rows include `can_convert`, false until the complete BF16 suite is ready.
+- **Enhancer preferences:** `pe_thinking`, `pe_language` and `pe_max_new_tokens` remain configurable through the API.
+  The enhancer precision is derived from the chosen suite; per-request `quant` is rejected.
 - **Job states and strict serialization.** A job's `state` is one of `queued`, `loading` (model load), `running`,
   `cancelling`, then exactly one terminal state: `done`, `failed` or `cancelled`. The engine runs one job at a time
   and reports a terminal state only after that job's GPU work has been synchronized and its cleanup has run; the
@@ -162,50 +152,18 @@ Image URLs inside JSON use these routes.
   `{line}` goes only to connections opened with `GET /api/events?serverlog=1` (opt-in per connection, so ordinary
   clients never receive the chatty stream). Lines are rate-limited at the source, and the app never logs while
   forwarding them.
-- **Heretic rewriters (local models).** `GET /api/models` also lists `t2i-heretic-8bit` and `i2i-heretic-8bit`:
-  `{kind:"pe", name:"i2i-heretic-8bit", mode:"i2i", quant:"8bit", variant:"heretic", source:"local", approx_gb:10.4, state, ...}`
-  (official entries carry `variant:"official"`, `source:"hf"`). Each is an on-disk mlx-vlm folder,
-  `Qwen-Image-2.1-PE-{T2I,I2I}-Heretic-MLX-8bit/` under `$IMAGEATELIER_MODELS_DIR` (default `<repo>/models`), with
-  its own `system_prompt.txt`. `state` is `ready` when the folder has `config.json`, every shard named in
-  `model.safetensors.index.json`, and `system_prompt.txt`; otherwise `not_installed` (with a `hint`). They cannot be
-  downloaded: `POST /api/models/pe/{name}/download` is `409` with the copy instructions.
-- **`pe_variant` setting** (`"official"` default | `"heretic"`), applying to **both** new-image (`t2i`) and edit (`i2i`)
-  enhances. When `"heretic"`, an enhance uses `<mode>-heretic-8bit` regardless of `pe_quant` (and of a `quant` in the
-  request); when `"official"`, `<mode>-8bit`. `POST /projects/{pid}/enhance` returns `409` ("... is not installed;
-  copy ...", naming the half it needs) if Heretic is selected but the needed half isn't installed. The engine's manager
-  keys are `["pe_t2i", "heretic-8bit"]` / `["pe_i2i", "heretic-8bit"]` (official: `["pe_t2i", "8bit"]` / `["pe_i2i", "8bit"]`), so
-  switching official <-> Heretic (or mode) reloads the rewriter and consecutive enhances with the same key do not.
-  **Migration:** a stored `pe_t2i_variant` becomes `pe_variant` with the same value on load (the old key is dropped, the file
-  rewritten, one info line logged). A `PUT` with `pe_t2i_variant` is `400` "pe_t2i_variant was replaced by pe_variant".
-- **Which rewriter ran.** Enhance job snapshots carry `rewriter` (`"official-8bit"`, `"heretic-8bit"`;
-  set once the job starts running) and the terminal `result` includes `rewriter` too.
-- **Deleting a project** cancels its jobs in every non-terminal state (queued, held, loading, running, paused) and removes its folder.
-- **Data dir:** `$IMAGEATELIER_DATA`, default `<repo>/data`: `settings.json`, `projects/<pid>/project.json`,
-  `projects/<pid>/runs/<NNNN>.png|.json|.thumb.webp` (thumbnail max 384 px).
+## Whole-suite models and migration
 
-## 4-bit removal and settings migration
+The only supported sources are `Qwen/Qwen-Image-2.1`, `Qwen/Qwen-Image-2.1-PE-T2I` and
+`Qwen/Qwen-Image-2.1-PE-I2I`, at revisions pinned in `imageatelier/suites.py`.
+BF16 contains the transformer, complete text/vision encoder, VAE and both enhancers. Q8, Q6 and Q4 are local conversions
+of that entire suite. The convolutional reference VAE stays at supported full precision in converted suites.
+Converted suites live at `$IMAGEATELIER_MODELS_DIR/Qwen-Image-2.1/<variant>/`; a verified `suite.json` manifest is required.
+Conversion acquires engine maintenance and a shared filesystem lock. Its subprocess loads only local pinned snapshots,
+converts components serially, checks image-component round trips and enhancer reloads, and publishes the final directory atomically.
 
-4-bit was removed everywhere: the only image variant is `8bit`, and the official enhancers are `t2i-8bit` and
-`i2i-8bit` (plus the local Heretic `t2i-heretic-8bit` and `i2i-heretic-8bit`). `variant` defaults to `"8bit"` and `"4bit"` is rejected with a 400 in `PUT /api/settings`
-and in `POST .../runs`. A stored `settings.json` that still says `variant: "4bit"` or `pe_quant: "4bit"` is **coerced to
-`"8bit"` on load** (one info line in the server log, and the file is rewritten) instead of failing validation.
-
-## Model parts and composed folders
-
-A generation needs three pieces, kept as separate downloads so they can be mixed:
-- **Image model** (`kind:"image"`, setting `image_model`, now only `official-8bit`): the transformer, VAE and processor,
-  plus the optional turbo add-on (`turbo_lora_ready`). Downloaded from the Hub (`POST /api/models/image/{name}/download`).
-- **Text encoder** (`kind:"text_encoder"`, setting `text_encoder`): `heretic-8bit` (default; from the Hub, downloadable) or
-  `official-8bit` (a converted local folder under `$IMAGEATELIER_MODELS_DIR`, `source:"local"`, state `not_installed` with a `hint`
-  until copied; it cannot be downloaded, so its download endpoint is 409).
-- **Turbo** is a per-run mode (`turbo` setting / request field), not a model.
-
-When a job runs, the engine *composes* a folder that symlinks the chosen image part and text encoder together (under
-`$IMAGEATELIER_COMPOSE_DIR`) and loads that, so switching the text encoder only re-links and reloads; nothing is copied.
-The resident model key is `["image", image_model, text_encoder, turbo]`, and results and snapshots carry `image_model`,
-`text_encoder` and `turbo`; run JSON records them too. Pre-parts files (`variant`) are migrated on load: `variant` is dropped, and
-`image_model`/`text_encoder` default to `official-8bit`/`heretic-8bit` (the pair the old single download contained).
-The old `POST /api/models/{variant}/download` was **removed** (no alias). `4bit` stays removed.
+Old independent and uncensored selections migrate to official Q8. Old Turbo 6/8-step settings migrate to 40 steps.
+Historical run metadata is retained. The current Settings UI exposes only whole-suite preparation and selection.
 
 ## Image upload (starting a project from a picture)
 
@@ -251,8 +209,7 @@ current image. Only **generation** uses them (prompt enhancement ignores them).
   image bytes** (same caps and errors as the project upload: 25 MB `413`, 80 MP `413`, not an image `415`, empty `400`; at most 30 per
   project, `409`). A reference is EXIF-oriented, flattened to opaque RGB and downscaled so the long side is <= 2048, **keeping its aspect
   (never cropped or padded)**. `name` defaults to "Reference N". Deleting a project deletes its references.
-- **Enabled set and limits:** only `enabled` references are used, in `order`. The limit is the `max_refs` setting (0..9, default 3; the
-  turbo LoRA was trained on at most three). A new reference is enabled if that stays within the limit, otherwise it is added **disabled**
+- **Enabled set and limits:** only `enabled` references are used, in `order`. The limit is the `max_refs` setting (0..9, default 3). A new reference is enabled if that stays within the limit, otherwise it is added **disabled**
   (the response says so in `note`). `PATCH {enabled: true}` beyond the limit is `409` "max N references enabled; disable one first".
   `PATCH {order: k}` moves it to position k (0-based); `PATCH {name}` renames. Changes are announced to all clients with an SSE
   **`refs`** event `{project_id, refs: [...]}` (the same list as `GET .../refs`).

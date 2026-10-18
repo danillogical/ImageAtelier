@@ -1,0 +1,159 @@
+{
+  "method": "Checkpoint headers for all tensors; two sampled rows (first and middle) per packed matrix. No complete-tensor numerical comparison.",
+  "sources": {
+    "image": [
+      "Qwen/Qwen-Image-2.1",
+      "d26bb61231c349cf6b7896fa83353113880e1ba3"
+    ],
+    "t2i": [
+      "Qwen/Qwen-Image-2.1-PE-T2I",
+      "f3ed7985c788ad75b3ab7223e0c4c51e2a43545b"
+    ],
+    "i2i": [
+      "Qwen/Qwen-Image-2.1-PE-I2I",
+      "72927bc08afc99b7888ceb7d7d51a12db3700bbd"
+    ]
+  },
+  "parts": {
+    "transformer": {
+      "bf16_weight_bytes": 14230284408,
+      "q8_weight_bytes": 7655273899,
+      "q8_packed_weight_bytes": 7013400576,
+      "bf16_dtypes": {
+        "BF16": 297
+      },
+      "q8_dtypes": {
+        "BF16": 525,
+        "U32": 228
+      },
+      "quantized_layers": 228,
+      "sampled_rows": 456,
+      "mean_relative_rms_error_percent": 0.7258893998163178,
+      "max_relative_rms_error_percent": 1.2506257896182968,
+      "vision_tensors": 0,
+      "vision_quantized_layers": 0,
+      "source_vision_tensors_preserved": 0,
+      "vision_dtypes": {},
+      "config_quantization": null,
+      "index_metadata": {
+        "quantization_level": "8",
+        "mflux_version": "0.20.0"
+      }
+    },
+    "text_encoder": {
+      "bf16_weight_bytes": 17534339488,
+      "q8_weight_bytes": 8781889136,
+      "q8_packed_weight_bytes": 8008382464,
+      "bf16_dtypes": {
+        "BF16": 750
+      },
+      "q8_dtypes": {
+        "BF16": 1091,
+        "U32": 343,
+        "F32": 2
+      },
+      "quantized_layers": 343,
+      "sampled_rows": 686,
+      "mean_relative_rms_error_percent": 0.7285994920828002,
+      "max_relative_rms_error_percent": 1.5741312955905813,
+      "vision_tensors": 532,
+      "vision_quantized_layers": 90,
+      "source_vision_tensors_preserved": 351,
+      "vision_dtypes": {
+        "BF16": 441,
+        "U32": 90,
+        "F32": 1
+      },
+      "config_quantization": null,
+      "index_metadata": {
+        "quantization_level": "8",
+        "mflux_version": "0.20.0"
+      }
+    },
+    "vae": {
+      "bf16_weight_bytes": 1350989512,
+      "q8_weight_bytes": 1350988938,
+      "q8_packed_weight_bytes": 0,
+      "bf16_dtypes": {
+        "F32": 238
+      },
+      "q8_dtypes": {
+        "F32": 238
+      },
+      "quantized_layers": 0,
+      "sampled_rows": 0,
+      "mean_relative_rms_error_percent": null,
+      "max_relative_rms_error_percent": null,
+      "vision_tensors": 0,
+      "vision_quantized_layers": 0,
+      "source_vision_tensors_preserved": 0,
+      "vision_dtypes": {},
+      "config_quantization": null,
+      "index_metadata": {
+        "quantization_level": "None",
+        "mflux_version": "0.20.0"
+      }
+    },
+    "t2i": {
+      "bf16_weight_bytes": 18819721168,
+      "q8_weight_bytes": 10426590911,
+      "q8_packed_weight_bytes": 8952741888,
+      "bf16_dtypes": {
+        "BF16": 760
+      },
+      "q8_dtypes": {
+        "BF16": 1010,
+        "U32": 250
+      },
+      "quantized_layers": 250,
+      "sampled_rows": 500,
+      "mean_relative_rms_error_percent": 0.7375133433527024,
+      "max_relative_rms_error_percent": 1.117992942076356,
+      "vision_tensors": 333,
+      "vision_quantized_layers": 0,
+      "source_vision_tensors_preserved": 333,
+      "vision_dtypes": {
+        "BF16": 333
+      },
+      "config_quantization": {
+        "group_size": 64,
+        "bits": 8,
+        "mode": "affine"
+      },
+      "index_metadata": {
+        "total_size": 10426431968
+      }
+    },
+    "i2i": {
+      "bf16_weight_bytes": 18819721168,
+      "q8_weight_bytes": 10426590911,
+      "q8_packed_weight_bytes": 8952741888,
+      "bf16_dtypes": {
+        "BF16": 760
+      },
+      "q8_dtypes": {
+        "BF16": 1010,
+        "U32": 250
+      },
+      "quantized_layers": 250,
+      "sampled_rows": 500,
+      "mean_relative_rms_error_percent": 0.7383719331583225,
+      "max_relative_rms_error_percent": 1.057742439718621,
+      "vision_tensors": 333,
+      "vision_quantized_layers": 0,
+      "source_vision_tensors_preserved": 333,
+      "vision_dtypes": {
+        "BF16": 333
+      },
+      "config_quantization": {
+        "group_size": 64,
+        "bits": 8,
+        "mode": "affine"
+      },
+      "index_metadata": {
+        "total_size": 10426431968
+      }
+    }
+  },
+  "passed": true
+}

@@ -534,3 +534,10 @@ small { font-size: 12.5px; }
 .sec { border-bottom: 0; background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent) bottom / 100% 1px no-repeat; }
 .sec:last-child { background: none; }
 .sheet-head h3, .dialog h3 { font-family: var(--font-display); letter-spacing: .01em; }
+:root .suite-choice { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+:root .suite-choice:disabled { cursor: default; opacity: 1; }
+:root .suite-choice .rs-title, :root .suite-choice small { display: block; }
+:root .suite-choice small { margin-top: 6px; }
+:root .suite-error { flex-basis: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-card:has(.suite-choice) { align-items: center; flex-wrap: wrap; }
+.model-card:has(.suite-choice) > .btn:disabled { opacity: .4; cursor: not-allowed; }

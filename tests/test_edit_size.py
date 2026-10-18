@@ -43,7 +43,7 @@ def eng(monkeypatch, tmp_path):
     def run(mode="edit", ref_size=None, resolution=1024):
         cfg["resolution"] = resolution
         n[0] += 1
-        job = {"kind": "generate", "prompt": "a cat", "mode": mode, "steps": 6, "turbo": True,
+        job = {"kind": "generate", "prompt": "a cat", "mode": mode, "steps": 6, "turbo": False,
                "output_path": str(tmp_path / f"out{n[0]}.png")}
         if mode == "edit":
             job["ref_image_path"] = ref(*ref_size)

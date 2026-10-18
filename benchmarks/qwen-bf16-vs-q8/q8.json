@@ -1,0 +1,372 @@
+{
+  "suite": "q8",
+  "raw_prompt": "An editorial photograph of a small neighborhood bakery at blue hour after rain. A woman in a mustard-yellow coat stands on the left holding a red umbrella; a friendly golden retriever sits on the right beside exactly three orange pumpkins. Warm light spills through the window. Above the door, a sign clearly reads \"NIGHT OWL BAKERY\". Wet cobblestones reflect the amber lights. Natural proportions, detailed textures, cinematic yet realistic lighting.",
+  "image_seed": 20261016,
+  "pe_seed": 314159,
+  "steps": 40,
+  "resolution": 1024,
+  "thinking": true,
+  "max_new_tokens": 8192,
+  "temperature": 1.0,
+  "top_p": 0.95,
+  "top_k": 20,
+  "low_memory": true,
+  "vae_tiling": false,
+  "started_at": "2026-10-16T17:09:09-0700",
+  "hardware": {
+    "chip": "Apple M5 Max",
+    "ram_bytes": 68719476736
+  },
+  "versions": {
+    "mlx": "0.32.3",
+    "mlx-vlm": "0.7.4",
+    "mflux": "0.20.0",
+    "huggingface_hub": "1.33.0"
+  },
+  "pe_wall_s": 40.342195999925025,
+  "enhancer": {
+    "id": "be2539014152",
+    "kind": "enhance",
+    "prompt": "An editorial photograph of a small neighborhood bakery at blue hour after rain. A woman in a mustard-yellow coat stands on the left holding a red umbrella; a friendly golden retriever sits on the right beside exactly three orange pumpkins. Warm light spills through the window. Above the door, a sign clearly reads \"NIGHT OWL BAKERY\". Wet cobblestones reflect the amber lights. Natural proportions, detailed textures, cinematic yet realistic lighting.",
+    "mode": "t2i",
+    "ref_image_path": null,
+    "quant": "8bit",
+    "thinking": true,
+    "max_new_tokens": 8192,
+    "language": "english",
+    "phase": "writing",
+    "rewriter": "official-8bit",
+    "tokens": 1953,
+    "text": "A warm, cinematic street-level photograph shows the exterior of a small independent bakery at dusk or early evening after rain. Across the upper-left portion of the storefront, a large rectangular wooden-framed sign with a dark black-brown background and aged tan lettering reads \"NIGHT OWL BAKERY\" in prominent serif capitals. The sign has an ornate, slightly weathered border with curved decorative corners, mounted above the window and door on a dark, textured building fa\u00e7ade. Warm amber light from the bakery interior spills outward, contrasting with the cool blue outdoor dusk tones. Behind and above the sign, the background contains softly blurred trees, shadowed building details, and small round streetlights, creating a shallow-depth-of-field bokeh effect.\n\nBelow the sign, the storefront is framed in dark, worn wood and black metal trim. A large rectangular display window occupies the left-center area, bordered by black painted wood with visible grain, scratches, and glossy rain-darkened edges. Inside the bakery, shelves and counter areas glow with golden pendant lighting. Several breads, pastries, jars, boxes, framed items, and small menu-like papers are visible on the back shelves, though the tiny internal labels are too blurred to read clearly. A hanging pendant lamp with a warm cream-colored shade is visible near the upper center-left inside the shop, with another smaller warm light farther right. Near the lower-right portion of the window, a pale cake or display box bears the handwritten-style label \"Apple Cake\" in dark text. The window glass is slightly reflective and speckled with moisture, showing reflections of trees, warm lights, and the rainy street.\n\nTo the right of the window is a dark wooden bakery door with vertical panels, black-painted framing, glass panes, and a brass-colored handle. A small square sign or glass label on the door contains the letter \"B\" in a dark serif character on a pale background. Above and beside the doorway, decorative molding and trim add an old-fashioned neighborhood-bakery character. At the lower-left side of the storefront, a large rectangular wooden planter sits on the wet sidewalk, filled with green leafy plants and small pale flowers. The planter has a weathered brown surface and aligns with the bakery\u2019s rustic, vintage aesthetic. Near the door, a smaller wooden planter holds clustered pink, white, and yellow flowers, placed on or beside the step leading into the bakery. The steps are dark, wet wood, with glossy highlights from rain and warm shop light.\n\nOn the right side of the storefront, an adult woman stands in three-quarter profile facing toward the bakery door and window. She appears to be in her 30s or 40s, with a slim-to-average build, light-to-medium skin tone, and medium-length curly brown hair falling around her face. Her face is partially visible in profile, with a calm, reflective expression as she looks toward the warmly lit entrance. She wears a mustard-yellow raincoat with a matte, slightly wrinkled texture, a dark gray knit beanie, dark leggings or slim pants, and black ankle boots with a polished finish. She holds a red umbrella above and slightly behind herself; the umbrella is open, medium-large, semicircular in silhouette, with visible ribs and wet raindrops catching the warm light along its dark red petal edges. The umbrella overlaps the warm window light and dark storefront, forming a strong visual shape against the cozy interior glow.\n\nA golden retriever sits beside exactly three orange pumpkins at the right edge of the image, positioned near the woman and the bakery steps. The dog is large, golden-colored, and fluffy, with soft feathering around the ears, chest, and legs. Its head is turned slightly to the left, looking toward the woman and the bakery, and its expression appears gentle and attentive. Three round orange pumpkins sit on the wet pavement in front of the dog, clustered together near the woman\u2019s feet. Their surfaces are matte, ribbed, and warmly lit, with bright orange highlights and darker shadowed grooves.\n\nThe ground across the foreground is made of wet cobblestones or brick pavers, with irregular rectangular shapes and glossy reflections. The warm amber light from the bakery window stretches across the pavement in shimmering streaks, while cooler blue-gray shadows suggest rain-soaked evening air. On the far right background, more warm streetlights and storefront lights appear as blurred circular glows against dark trees and architecture. The overall composition is balanced between the bakery sign and window on the left and the woman, dog, umbrella, and pumpkins on the right. The image has a realistic photographic style with cinematic color grading, shallow depth of field, rich contrast between warm interior light and cool rainy exterior tones, and a cozy autumn atmosphere.",
+    "state": "done",
+    "pause_requested": false,
+    "paused_s": 0.0,
+    "error": null,
+    "result": {
+      "rewritten_prompt": "A warm, cinematic street-level photograph shows the exterior of a small independent bakery at dusk or early evening after rain. Across the upper-left portion of the storefront, a large rectangular wooden-framed sign with a dark black-brown background and aged tan lettering reads \"NIGHT OWL BAKERY\" in prominent serif capitals. The sign has an ornate, slightly weathered border with curved decorative corners, mounted above the window and door on a dark, textured building fa\u00e7ade. Warm amber light from the bakery interior spills outward, contrasting with the cool blue outdoor dusk tones. Behind and above the sign, the background contains softly blurred trees, shadowed building details, and small round streetlights, creating a shallow-depth-of-field bokeh effect.\n\nBelow the sign, the storefront is framed in dark, worn wood and black metal trim. A large rectangular display window occupies the left-center area, bordered by black painted wood with visible grain, scratches, and glossy rain-darkened edges. Inside the bakery, shelves and counter areas glow with golden pendant lighting. Several breads, pastries, jars, boxes, framed items, and small menu-like papers are visible on the back shelves, though the tiny internal labels are too blurred to read clearly. A hanging pendant lamp with a warm cream-colored shade is visible near the upper center-left inside the shop, with another smaller warm light farther right. Near the lower-right portion of the window, a pale cake or display box bears the handwritten-style label \"Apple Cake\" in dark text. The window glass is slightly reflective and speckled with moisture, showing reflections of trees, warm lights, and the rainy street.\n\nTo the right of the window is a dark wooden bakery door with vertical panels, black-painted framing, glass panes, and a brass-colored handle. A small square sign or glass label on the door contains the letter \"B\" in a dark serif character on a pale background. Above and beside the doorway, decorative molding and trim add an old-fashioned neighborhood-bakery character. At the lower-left side of the storefront, a large rectangular wooden planter sits on the wet sidewalk, filled with green leafy plants and small pale flowers. The planter has a weathered brown surface and aligns with the bakery\u2019s rustic, vintage aesthetic. Near the door, a smaller wooden planter holds clustered pink, white, and yellow flowers, placed on or beside the step leading into the bakery. The steps are dark, wet wood, with glossy highlights from rain and warm shop light.\n\nOn the right side of the storefront, an adult woman stands in three-quarter profile facing toward the bakery door and window. She appears to be in her 30s or 40s, with a slim-to-average build, light-to-medium skin tone, and medium-length curly brown hair falling around her face. Her face is partially visible in profile, with a calm, reflective expression as she looks toward the warmly lit entrance. She wears a mustard-yellow raincoat with a matte, slightly wrinkled texture, a dark gray knit beanie, dark leggings or slim pants, and black ankle boots with a polished finish. She holds a red umbrella above and slightly behind herself; the umbrella is open, medium-large, semicircular in silhouette, with visible ribs and wet raindrops catching the warm light along its dark red petal edges. The umbrella overlaps the warm window light and dark storefront, forming a strong visual shape against the cozy interior glow.\n\nA golden retriever sits beside exactly three orange pumpkins at the right edge of the image, positioned near the woman and the bakery steps. The dog is large, golden-colored, and fluffy, with soft feathering around the ears, chest, and legs. Its head is turned slightly to the left, looking toward the woman and the bakery, and its expression appears gentle and attentive. Three round orange pumpkins sit on the wet pavement in front of the dog, clustered together near the woman\u2019s feet. Their surfaces are matte, ribbed, and warmly lit, with bright orange highlights and darker shadowed grooves.\n\nThe ground across the foreground is made of wet cobblestones or brick pavers, with irregular rectangular shapes and glossy reflections. The warm amber light from the bakery window stretches across the pavement in shimmering streaks, while cooler blue-gray shadows suggest rain-soaked evening air. On the far right background, more warm streetlights and storefront lights appear as blurred circular glows against dark trees and architecture. The overall composition is balanced between the bakery sign and window on the left and the woman, dog, umbrella, and pumpkins on the right. The image has a realistic photographic style with cinematic color grading, shallow depth of field, rich contrast between warm interior light and cool rainy exterior tones, and a cozy autumn atmosphere.",
+      "fell_back": false,
+      "finish_reason": "stop",
+      "thinking_tokens": 965,
+      "answer_tokens": 988,
+      "tok_s": 55.7,
+      "paused_s": 0.0,
+      "gen_s": 36.16,
+      "load_s": 1.395,
+      "peak_mem_bytes": 12115948934,
+      "mode": "t2i",
+      "quant": "8bit",
+      "rewriter": "official-8bit",
+      "thinking": true,
+      "language": "english",
+      "teardown_s": 0.048,
+      "gpu_util_at_start": 0
+    },
+    "created_at": 1792195749.72366,
+    "queue_position": null
+  },
+  "timings": {
+    "pe_job_before_cleanup_s": 37.58097741706297,
+    "pe_prefill_to_first_token_s": 1.093934000004083,
+    "pe_thinking_decode_s": 17.187571791000664,
+    "pe_answer_decode_s": 17.875697584007867,
+    "prompt_encoding_s": 0.46279862499795854,
+    "text_encoder_offload_s": 0.0739784580655396,
+    "denoising_s": 82.89818079199176,
+    "vae_decode_and_pixel_conversion_s": 1.9625414160545915,
+    "image_job_before_cleanup_s": 87.3204254170414,
+    "image_setup_png_and_other_overhead_s": 0.18992612593154945
+  },
+  "runtime_quantization": {
+    "pe_t2i": {
+      "pe_t2i": {
+        "quantized_layers": 250,
+        "bits": [
+          8
+        ],
+        "groups": [
+          64
+        ],
+        "parameter_dtypes": {
+          "mlx.core.bfloat16": 1010,
+          "mlx.core.uint32": 250
+        },
+        "vision_quantized_layers": 0
+      }
+    },
+    "image": {
+      "transformer": {
+        "quantized_layers": 228,
+        "bits": [
+          8
+        ],
+        "groups": [
+          64
+        ],
+        "parameter_dtypes": {
+          "mlx.core.uint32": 228,
+          "mlx.core.bfloat16": 525
+        },
+        "vision_quantized_layers": 0
+      },
+      "text_encoder": {
+        "quantized_layers": 343,
+        "bits": [
+          8
+        ],
+        "groups": [
+          64
+        ],
+        "parameter_dtypes": {
+          "mlx.core.uint32": 343,
+          "mlx.core.bfloat16": 1091,
+          "mlx.core.float32": 2
+        },
+        "vision_quantized_layers": 90
+      },
+      "vae": {
+        "quantized_layers": 0,
+        "bits": [],
+        "groups": [],
+        "parameter_dtypes": {
+          "mlx.core.float32": 238
+        },
+        "vision_quantized_layers": 0
+      }
+    }
+  },
+  "image_wall_s": 88.04117508302443,
+  "pipeline_wall_s": 128.3844991250662,
+  "image": {
+    "id": "fa9455ddb5b7",
+    "kind": "generate",
+    "prompt": "A warm, cinematic street-level photograph shows the exterior of a small independent bakery at dusk or early evening after rain. Across the upper-left portion of the storefront, a large rectangular wooden-framed sign with a dark black-brown background and aged tan lettering reads \"NIGHT OWL BAKERY\" in prominent serif capitals. The sign has an ornate, slightly weathered border with curved decorative corners, mounted above the window and door on a dark, textured building fa\u00e7ade. Warm amber light from the bakery interior spills outward, contrasting with the cool blue outdoor dusk tones. Behind and above the sign, the background contains softly blurred trees, shadowed building details, and small round streetlights, creating a shallow-depth-of-field bokeh effect.\n\nBelow the sign, the storefront is framed in dark, worn wood and black metal trim. A large rectangular display window occupies the left-center area, bordered by black painted wood with visible grain, scratches, and glossy rain-darkened edges. Inside the bakery, shelves and counter areas glow with golden pendant lighting. Several breads, pastries, jars, boxes, framed items, and small menu-like papers are visible on the back shelves, though the tiny internal labels are too blurred to read clearly. A hanging pendant lamp with a warm cream-colored shade is visible near the upper center-left inside the shop, with another smaller warm light farther right. Near the lower-right portion of the window, a pale cake or display box bears the handwritten-style label \"Apple Cake\" in dark text. The window glass is slightly reflective and speckled with moisture, showing reflections of trees, warm lights, and the rainy street.\n\nTo the right of the window is a dark wooden bakery door with vertical panels, black-painted framing, glass panes, and a brass-colored handle. A small square sign or glass label on the door contains the letter \"B\" in a dark serif character on a pale background. Above and beside the doorway, decorative molding and trim add an old-fashioned neighborhood-bakery character. At the lower-left side of the storefront, a large rectangular wooden planter sits on the wet sidewalk, filled with green leafy plants and small pale flowers. The planter has a weathered brown surface and aligns with the bakery\u2019s rustic, vintage aesthetic. Near the door, a smaller wooden planter holds clustered pink, white, and yellow flowers, placed on or beside the step leading into the bakery. The steps are dark, wet wood, with glossy highlights from rain and warm shop light.\n\nOn the right side of the storefront, an adult woman stands in three-quarter profile facing toward the bakery door and window. She appears to be in her 30s or 40s, with a slim-to-average build, light-to-medium skin tone, and medium-length curly brown hair falling around her face. Her face is partially visible in profile, with a calm, reflective expression as she looks toward the warmly lit entrance. She wears a mustard-yellow raincoat with a matte, slightly wrinkled texture, a dark gray knit beanie, dark leggings or slim pants, and black ankle boots with a polished finish. She holds a red umbrella above and slightly behind herself; the umbrella is open, medium-large, semicircular in silhouette, with visible ribs and wet raindrops catching the warm light along its dark red petal edges. The umbrella overlaps the warm window light and dark storefront, forming a strong visual shape against the cozy interior glow.\n\nA golden retriever sits beside exactly three orange pumpkins at the right edge of the image, positioned near the woman and the bakery steps. The dog is large, golden-colored, and fluffy, with soft feathering around the ears, chest, and legs. Its head is turned slightly to the left, looking toward the woman and the bakery, and its expression appears gentle and attentive. Three round orange pumpkins sit on the wet pavement in front of the dog, clustered together near the woman\u2019s feet. Their surfaces are matte, ribbed, and warmly lit, with bright orange highlights and darker shadowed grooves.\n\nThe ground across the foreground is made of wet cobblestones or brick pavers, with irregular rectangular shapes and glossy reflections. The warm amber light from the bakery window stretches across the pavement in shimmering streaks, while cooler blue-gray shadows suggest rain-soaked evening air. On the far right background, more warm streetlights and storefront lights appear as blurred circular glows against dark trees and architecture. The overall composition is balanced between the bakery sign and window on the left and the woman, dog, umbrella, and pumpkins on the right. The image has a realistic photographic style with cinematic color grading, shallow depth of field, rich contrast between warm interior light and cool rainy exterior tones, and a cozy autumn atmosphere.",
+    "mode": "t2i",
+    "ref_image_path": null,
+    "seed": 20261016,
+    "steps": 40,
+    "turbo": false,
+    "transparent": false,
+    "image_model": "official-8bit",
+    "text_encoder": "official-8bit",
+    "output_path": "/Users/katherinenewman/src/ImageAtelier/benchmarks/qwen-bf16-vs-q8/q8.png",
+    "refs": 0,
+    "ref_image_paths": [],
+    "ref_detail": "auto",
+    "reference_resolution": 1024,
+    "step": 40,
+    "total_steps": 40,
+    "state": "done",
+    "pause_requested": false,
+    "paused_s": 0.0,
+    "error": null,
+    "result": {
+      "transparent": false,
+      "seed": 20261016,
+      "steps": 40,
+      "turbo": false,
+      "image_model": "official-8bit",
+      "text_encoder": "official-8bit",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "output_path": "/Users/katherinenewman/src/ImageAtelier/benchmarks/qwen-bf16-vs-q8/q8.png",
+      "load_s": 1.733,
+      "te_reload_s": 0.0,
+      "gen_s": 85.397,
+      "te_offload": true,
+      "vae_tiling": false,
+      "refs": 0,
+      "reference_resolution": 1024,
+      "ref_detail": "auto",
+      "paused_s": 0.0,
+      "peak_mem_bytes": 22939065353,
+      "peak_phase": "decode",
+      "phases": {
+        "load": {
+          "peak": 17789963312,
+          "active": 17789963312
+        },
+        "encode": {
+          "peak": 18184538160,
+          "active": 17800773249
+        },
+        "denoise": {
+          "peak": 12885154823,
+          "active": 9531530237
+        },
+        "decode": {
+          "peak": 22939065353,
+          "active": 9014521223
+        }
+      },
+      "teardown_s": 0.041,
+      "gpu_util_at_start": 0
+    },
+    "created_at": 1792195790.067038,
+    "queue_position": null
+  },
+  "step_timings": [
+    {
+      "step": 1,
+      "seconds": 2.236517749959603
+    },
+    {
+      "step": 2,
+      "seconds": 1.9530336250318214
+    },
+    {
+      "step": 3,
+      "seconds": 1.9398974169744179
+    },
+    {
+      "step": 4,
+      "seconds": 1.9647550000809133
+    },
+    {
+      "step": 5,
+      "seconds": 1.9854288749629632
+    },
+    {
+      "step": 6,
+      "seconds": 1.9954047499923036
+    },
+    {
+      "step": 7,
+      "seconds": 2.0066106249578297
+    },
+    {
+      "step": 8,
+      "seconds": 2.018057500012219
+    },
+    {
+      "step": 9,
+      "seconds": 2.0300532080000266
+    },
+    {
+      "step": 10,
+      "seconds": 2.038031000061892
+    },
+    {
+      "step": 11,
+      "seconds": 2.0321858329698443
+    },
+    {
+      "step": 12,
+      "seconds": 2.044702042010613
+    },
+    {
+      "step": 13,
+      "seconds": 2.0526072919601575
+    },
+    {
+      "step": 14,
+      "seconds": 2.0483769580023363
+    },
+    {
+      "step": 15,
+      "seconds": 2.051174958003685
+    },
+    {
+      "step": 16,
+      "seconds": 2.0523230839753523
+    },
+    {
+      "step": 17,
+      "seconds": 2.0679631660459563
+    },
+    {
+      "step": 18,
+      "seconds": 2.06287316698581
+    },
+    {
+      "step": 19,
+      "seconds": 2.0685387919656932
+    },
+    {
+      "step": 20,
+      "seconds": 2.066829708055593
+    },
+    {
+      "step": 21,
+      "seconds": 2.071140000014566
+    },
+    {
+      "step": 22,
+      "seconds": 2.073021417018026
+    },
+    {
+      "step": 23,
+      "seconds": 2.0834313749801368
+    },
+    {
+      "step": 24,
+      "seconds": 2.081205290975049
+    },
+    {
+      "step": 25,
+      "seconds": 2.0852892090333626
+    },
+    {
+      "step": 26,
+      "seconds": 2.0842264159582555
+    },
+    {
+      "step": 27,
+      "seconds": 2.081936917034909
+    },
+    {
+      "step": 28,
+      "seconds": 2.086762582999654
+    },
+    {
+      "step": 29,
+      "seconds": 2.088404499925673
+    },
+    {
+      "step": 30,
+      "seconds": 2.0940557090798393
+    },
+    {
+      "step": 31,
+      "seconds": 2.0903934999369085
+    },
+    {
+      "step": 32,
+      "seconds": 2.087690416024998
+    },
+    {
+      "step": 33,
+      "seconds": 2.095074624987319
+    },
+    {
+      "step": 34,
+      "seconds": 2.103227874962613
+    },
+    {
+      "step": 35,
+      "seconds": 2.161276667029597
+    },
+    {
+      "step": 36,
+      "seconds": 2.236272042035125
+    },
+    {
+      "step": 37,
+      "seconds": 2.203957207966596
+    },
+    {
+      "step": 38,
+      "seconds": 2.121063166996464
+    },
+    {
+      "step": 39,
+      "seconds": 2.1323682910297066
+    },
+    {
+      "step": 40,
+      "seconds": 2.121885291999206
+    }
+  ],
+  "finished_at": "2026-10-16T17:11:18-0700",
+  "status": "complete"
+}

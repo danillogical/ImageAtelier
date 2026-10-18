@@ -119,8 +119,7 @@ class TestRuns:
         pid = new_project(client)["id"]
         before = client.get(f"/api/projects/{pid}").json()["updated_at"]
         time.sleep(0.02)
-        r = submit(client, pid, "a cat", seed=42, steps=8, turbo=True, image_model="official-8bit",
-                   text_encoder="official-8bit")
+        r = submit(client, pid, "a cat", seed=42, steps=8, model_suite="q8")
         wait_run(client, pid, r["run_reserved"])
         d = runs_dir(tmp_path, pid)
         assert (d / "0001.png").is_file()
@@ -128,7 +127,7 @@ class TestRuns:
         meta = json.loads((d / "0001.json").read_text())
         assert RUN_KEYS <= set(meta)
         assert meta["prompt"] == "a cat" and meta["mode"] == "t2i" and meta["parent_run"] is None
-        assert meta["seed"] == 42 and meta["steps"] == 8 and meta["turbo"] is True
+        assert meta["seed"] == 42 and meta["steps"] == 8 and meta["turbo"] is False
         assert meta["image_model"] == "official-8bit" and meta["text_encoder"] == "official-8bit"
         assert "variant" not in meta
         p = client.get(f"/api/projects/{pid}").json()
@@ -219,49 +218,29 @@ class TestGallery:
 # ---- 8. settings ----------------------------------------------------------------------------
 class TestSettings:
     def test_defaults(self, client):
-        assert client.get("/api/settings").json() == {
-            "image_model": "official-8bit", "text_encoder": "heretic-8bit", "turbo": True, "steps": 6, "low_memory": True,
-            "vae_tiling": False, "resolution": 1024, "pe_quant": "8bit", "pe_thinking": True,
-            "pe_max_new_tokens": 8192, "pe_language": "english",
-            "pe_variant": "official", "ref_detail": "auto", "max_refs": 3}
-
-    @pytest.mark.parametrize("steps,code", [(6, 200), (8, 200), (7, 400), (5, 400), (40, 400)])
-    def test_turbo_steps(self, client, steps, code):
-        r = client.put("/api/settings", json={"turbo": True, "steps": steps})
-        assert r.status_code == code
-        if code == 200:
-            assert r.json()["steps"] == steps
-        else:
-            assert client.get("/api/settings").json()["steps"] == 6  # failed PUT changes nothing
+        s = client.get("/api/settings").json()
+        assert s["model_suite"] == "q8" and s["steps"] == 40 and s["turbo"] is False
+        assert s["image_model"] == s["text_encoder"] == "official-8bit"
+        assert s["pe_quant"] == "8bit" and s["pe_variant"] == "official"
 
     @pytest.mark.parametrize("steps,code", [(2, 200), (40, 200), (100, 200), (1, 400), (101, 400)])
-    def test_non_turbo_steps(self, client, steps, code):
-        r = client.put("/api/settings", json={"turbo": False, "steps": steps})
-        assert r.status_code == code
-        if code == 400:
-            assert client.get("/api/settings").json()["turbo"] is True
+    def test_standard_steps(self, client, steps, code):
+        assert client.put("/api/settings", json={"steps": steps}).status_code == code
 
-    def test_toggle_turbo_resets_steps(self, client):
-        assert client.put("/api/settings", json={"turbo": False}).json()["steps"] == 40
-        assert client.put("/api/settings", json={"turbo": True}).json()["steps"] == 6
-        client.put("/api/settings", json={"steps": 8})
-        assert client.put("/api/settings", json={"turbo": False}).json()["steps"] == 40
-
-    def test_unknown_key_400(self, client):
-        r = client.put("/api/settings", json={"bogus": 1})
-        assert r.status_code == 400 and "detail" in r.json()
-
-    @pytest.mark.parametrize("body", [{"variant": "8bit"}, {"variant": "4bit"}, {"image_model": "nope"},
-                                      {"text_encoder": "nope"}, {"image_model": "heretic-8bit"}])
-    def test_bad_parts_400(self, client, body):
+    @pytest.mark.parametrize("change", [{"turbo": True}, {"pe_variant": "heretic"}, {"pe_quant": "8bit"},
+                                        {"text_encoder": "official-8bit"}, {"image_model": "official-8bit"},
+                                        {"bogus": 1}, {"model_suite": "q3"}])
+    def test_removed_choices_rejected(self, client, change):
         before = client.get("/api/settings").json()
-        assert client.put("/api/settings", json=body).status_code == 400
+        assert client.put("/api/settings", json=change).status_code == 400
         assert client.get("/api/settings").json() == before
 
-    @pytest.mark.parametrize("te", ["heretic-8bit", "official-8bit"])
-    def test_text_encoder_choices(self, client, te):
-        r = client.put("/api/settings", json={"text_encoder": te})
-        assert r.status_code == 200 and r.json()["text_encoder"] == te and "variant" not in r.json()
+    @pytest.mark.parametrize("name,quant", [("bf16", "bf16"), ("q8", "8bit"), ("q6", "6bit"), ("q4", "4bit")])
+    def test_suite_selection(self, client, name, quant):
+        r = client.put("/api/settings", json={"model_suite": name})
+        assert r.status_code == 200
+        assert r.json()["image_model"] == r.json()["text_encoder"] == f"official-{quant}"
+        assert r.json()["pe_quant"] == quant
 
     def test_resolution_range(self, client):
         assert client.put("/api/settings", json={"resolution": 512}).status_code == 200
@@ -269,25 +248,16 @@ class TestSettings:
         assert client.put("/api/settings", json={"resolution": 4096}).status_code == 400
 
     def test_malformed_json_is_400(self, client):
-        r = client.put("/api/settings", content=b"{not json", headers={"content-type": "application/json"})
-        assert r.status_code == 400
+        assert client.put("/api/settings", content=b"{not json", headers={"content-type": "application/json"}).status_code == 400
 
     def test_settings_feed_run_defaults(self, client, engine):
-        client.put("/api/settings", json={"turbo": False})
+        client.put("/api/settings", json={"model_suite": "q6", "steps": 25})
         pid = new_project(client)["id"]
-        r = submit(client, pid)
+        run = submit(client, pid)
         job = engine.submitted[-1]
-        assert job["turbo"] is False and job["steps"] == 40
-        assert job["image_model"] == "official-8bit" and job["text_encoder"] == "heretic-8bit"
-        assert "variant" not in job
-        wait_run(client, pid, r["run_reserved"])
-
-    def test_turbo_override_uses_mode_default_steps(self, client, engine):
-        client.put("/api/settings", json={"turbo": False, "steps": 25})
-        pid = new_project(client)["id"]
-        r = submit(client, pid, turbo=True)  # differs from settings -> mode default 6
-        assert engine.submitted[-1]["steps"] == 6 and engine.submitted[-1]["turbo"] is True
-        wait_run(client, pid, r["run_reserved"])
+        assert job["turbo"] is False and job["steps"] == 25
+        assert job["image_model"] == job["text_encoder"] == "official-6bit"
+        wait_run(client, pid, run["run_reserved"])
 
 
 # ---- 9. validation --------------------------------------------------------------------------
@@ -306,29 +276,27 @@ class TestSubmitValidation:
 
     def test_bad_steps_400(self, client):
         pid = new_project(client)["id"]
-        assert client.post(f"/api/projects/{pid}/runs", json={"prompt": "x", "steps": 7}).status_code == 400
+        assert client.post(f"/api/projects/{pid}/runs", json={"prompt": "x", "steps": 1}).status_code == 400
 
     def test_image_model_not_downloaded_409(self, client, ready, engine):
         ready["image"]["official-8bit"] = False
         pid = new_project(client)["id"]
-        r = client.post(f"/api/projects/{pid}/runs", json={"prompt": "x", "image_model": "official-8bit"})
+        r = client.post(f"/api/projects/{pid}/runs", json={"prompt": "x"})
         assert r.status_code == 409 and "detail" in r.json()
         assert engine.submitted == []
 
     def test_default_text_encoder_not_downloaded_409(self, client, ready, engine):
-        ready["te"]["heretic-8bit"] = False  # the default encoder
+        ready["te"]["official-8bit"] = False  # the default encoder
         pid = new_project(client)["id"]
         assert client.post(f"/api/projects/{pid}/runs", json={"prompt": "x"}).status_code == 409
         assert engine.submitted == []
 
-    def test_chosen_text_encoder_not_installed_409(self, client, ready, engine):
-        ready["te"]["official-8bit"] = False  # local encoder, not copied in
+    def test_incomplete_suite_blocks_generation(self, client, ready, engine):
+        ready["te"]["official-8bit"] = False
         pid = new_project(client)["id"]
-        r = client.post(f"/api/projects/{pid}/runs", json={"prompt": "x", "text_encoder": "official-8bit"})
-        assert r.status_code == 409 and "installed" in r.json()["detail"]
+        r = client.post(f"/api/projects/{pid}/runs", json={"prompt": "x"})
+        assert r.status_code == 409 and "suite" in r.json()["detail"]
         assert engine.submitted == []
-        # the default encoder is unaffected
-        assert client.post(f"/api/projects/{pid}/runs", json={"prompt": "x"}).status_code == 202
 
     @pytest.mark.parametrize("body", [{"image_model": "nope"}, {"text_encoder": "nope"}, {"variant": "8bit"},
                                       {"variant": "4bit"}, {"variant": "nope"}])
@@ -448,25 +416,14 @@ class TestJobs:
 
 # ---- models ---------------------------------------------------------------------------------
 class TestModels:
-    def test_list_and_download(self, client, ready):
-        lst = client.get("/api/models").json()
-        images = [m for m in lst if m["kind"] == "image"]
-        tes = [m for m in lst if m["kind"] == "text_encoder"]
-        assert [m["name"] for m in images] == ["official-8bit"]
-        assert {m["name"]: m["source"] for m in tes} == {"heretic-8bit": "hf", "official-8bit": "local"}
-        assert all({"name", "label", "approx_gb", "state"} <= set(m) for m in images + tes)
-        assert "turbo_lora_ready" in images[0]
-        assert [m["kind"] for m in lst[:3]] == ["image", "text_encoder", "text_encoder"]
-        r = client.post("/api/models/image/official-8bit/download")
+    def test_list_and_download(self, client, monkeypatch):
+        from imageatelier import suites
+        rows = client.get("/api/models").json()
+        assert [r["name"] for r in rows] == ["bf16", "q8", "q6", "q4"]
+        assert all(r["kind"] == "suite" for r in rows)
+        monkeypatch.setattr(suites, "start_download", lambda: True)
+        r = client.post("/api/models/bf16/download")
         assert r.status_code == 202 and r.json() == {"started": True}
-        assert ready["started"] == ["official-8bit"]
-        r = client.post("/api/models/text_encoder/heretic-8bit/download")
-        assert r.status_code == 202 and r.json() == {"started": True}
-        assert ready["started_te"] == ["heretic-8bit"]
-        assert client.post("/api/models/image/nope/download").status_code == 404
-        assert client.post("/api/models/text_encoder/nope/download").status_code == 404
-        # the old per-variant endpoint was removed (no alias)
-        assert client.post("/api/models/8bit/download").status_code in (404, 405)
 
 
 # ---- 11. SSE --------------------------------------------------------------------------------

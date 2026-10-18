@@ -1,4 +1,4 @@
-"""Single-worker MLX engine: Qwen-Image-2.1-Heretic generation/edit plus Qwen prompt-enhancer rewrites.
+"""Single-worker MLX engine: official Qwen-Image-2.1 generation/edit and prompt enhancement.
 
 All MLX work (model construction, generation, cache control) happens on one dedicated worker thread,
 because MLX state such as the RNG seed and buffer cache is process-global. Exactly one model (an image
@@ -30,20 +30,17 @@ from imageatelier import models, serverlog
 
 log = logging.getLogger(__name__)
 
-TURBO_STEPS = (6, 8)
 MIN_STEPS = 2
 DEFAULT_STEPS = 40
-DEFAULT_TURBO_STEPS = 6
 DEFAULT_RESOLUTION = 1024
 # low_memory expands to these settings; explicit "te_offload" / "vae_tiling" keys override it.
-# Measured earlier at turbo 1024 (t2i + edit): te_offload cuts peak footprint 24.2 -> 19.5 GB for ~0.2 s/job,
-# pixel-identical. vae_tiling cuts a further ~2.2 GB but adds ~3-5 s/job and changes pixels slightly, so it is opt-in.
+# Offload the text encoder after encoding; VAE tiling remains an optional additional memory saving.
 LOW_MEMORY_PRESET = {"te_offload": True, "vae_tiling": False}
 DEFAULT_LOW_MEMORY = True
 
 # Prompt-enhancer defaults (each overridable by settings "pe_*" keys, then by the job itself).
 PE_MODES = ("t2i", "i2i")
-PE_QUANTS = ("8bit",)
+PE_QUANTS = ("bf16", "8bit", "6bit", "4bit")
 PE_LANGUAGES = ("english", "auto")
 DEFAULT_PE_QUANT = "8bit"
 DEFAULT_PE_THINKING = False
@@ -72,7 +69,7 @@ REF_DETAILS = ("auto", "high", "standard", "low")
 REF_DETAIL_RESOLUTION = {"high": 1024, "standard": 768, "low": 512}
 AUTO_REF_RESOLUTION = ((1, 1024), (3, 768))  # (max extra refs, reference_resolution); 0 extra refs: unchanged
 DEFAULT_REF_DETAIL = "auto"
-DEFAULT_MAX_REFS = 3  # the turbo LoRA was trained on at most three references
+DEFAULT_MAX_REFS = 3
 MAX_REFS_CAP = 9
 MAX_IMAGES = 10  # the fork accepts at most ten conditioning images (current + refs)
 
@@ -160,7 +157,7 @@ class _Job:
     max_new_tokens: int | None = None
     language: str | None = None
     phase: str | None = None
-    rewriter: str | None = None  # which rewriter model runs this job, e.g. "official-8bit" | "heretic-8bit"
+    rewriter: str | None = None  # precision of the official suite's prompt enhancer
     tokens: int = 0
     text: str = ""
     # common
@@ -248,8 +245,8 @@ def validate_steps(steps: int, turbo: bool) -> None:
     # The fork's terminal sigma shift needs at least two steps (QwenImage21LatentCreator.validate).
     if isinstance(steps, bool) or not isinstance(steps, int) or steps < MIN_STEPS:
         raise ValueError(f"steps must be an integer >= {MIN_STEPS}, got {steps!r}")
-    if turbo and steps not in TURBO_STEPS:
-        raise ValueError(f"turbo supports only {TURBO_STEPS[0]} or {TURBO_STEPS[1]} steps, got {steps}")
+    if turbo:
+        raise ValueError("Turbo is no longer supported")
 
 
 def resolve_reference_resolution(ref_detail: str, extra_refs: int, resolution: int) -> int:
@@ -359,7 +356,7 @@ class ModelManager:
         if key[0] == "image":
             _, image_model, text_encoder, turbo = key
             root, te_dir, lora = models.resolve_parts(image_model, text_encoder, turbo)
-            composed = models.compose(image_model, text_encoder, root, te_dir, self._compose_dir)
+            composed = root
             source = (composed, lora)
             parts = {"composed": str(composed), "image": str(root), "text_encoder": str(te_dir)}
         elif key[0] in ("pe_t2i", "pe_i2i"):
@@ -427,9 +424,8 @@ class ModelManager:
         model = QwenImage21Edit(
             model_path=str(snapshot),
             model_config=config,
-            # An explicit local LoRA path keeps the preset from calling hf_hub_download at load time.
-            lora_paths=[str(lora)] if turbo else None,
-            lora_preset="viggle-turbo" if turbo else None,
+            # BF16 stays BF16; locally converted components carry their own stored precision.
+            quantize=None,
         )
         model.callbacks.register(self._image_callback)
         self.model, self.snapshot, self.key = model, snapshot, key
@@ -446,7 +442,7 @@ class Engine:
 
     settings_provider: zero-arg callable returning a Mapping (or None), read at the start of each job.
       Recognised keys, all optional: "resolution" (output long-side basis, default 1024),
-      "default_steps" (non-turbo, default 40), "default_turbo_steps" (default 6),
+      "default_steps" (default 40),
       "low_memory" (default True: free the text encoder after each encode, reload it lazily next job),
       "te_offload" / "vae_tiling" (explicit overrides of what low_memory implies; vae_tiling default False),
       "pe_quant" ("8bit"), "pe_thinking" (False), "pe_max_new_tokens" (8192), "pe_language" ("english"|"auto").
@@ -806,12 +802,16 @@ class Engine:
             raise ValueError(f"unknown image_model {image_model!r}; expected one of {sorted(models.IMAGE_MODELS)}")
         if text_encoder not in models.TEXT_ENCODERS:
             raise ValueError(f"unknown text_encoder {text_encoder!r}; expected one of {sorted(models.TEXT_ENCODERS)}")
+        if text_encoder != image_model:
+            raise ValueError("Choose a complete suite; model parts cannot be mixed")
         if not job.get("output_path"):
             raise ValueError("output_path is required")
         seed = job.get("seed")
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
             raise ValueError(f"seed must be a non-negative integer or None, got {seed!r}")
         turbo = bool(job.get("turbo", False))
+        if turbo:
+            raise ValueError("Turbo is no longer supported")
         steps = job.get("steps")
         if steps is not None:
             validate_steps(steps, turbo)
@@ -1113,9 +1113,7 @@ class Engine:
         settings = dict(self._settings_provider() or {})
         steps = job.steps
         if steps is None:
-            steps = settings.get("default_turbo_steps", DEFAULT_TURBO_STEPS) if job.turbo else settings.get(
-                "default_steps", DEFAULT_STEPS
-            )
+            steps = settings.get("default_steps", DEFAULT_STEPS)
         try:
             validate_steps(steps, job.turbo)
             if job.mode == "edit" and not Path(job.ref_image_path).is_file():
@@ -1285,12 +1283,10 @@ class Engine:
                 raise ValueError(f"reference image not found: {job.ref_image_path}")
         except ValueError as exc:
             return FAILED, {"error": str(exc)}
-        # The Heretic rewriters (settings pe_variant) replace the official model of either mode whatever pe_quant says.
-        heretic = settings.get("pe_variant", "official") == "heretic"
-        model_quant = models.PE_HERETIC if heretic else quant
+        model_quant = quant
         with self._lock:
             job.quant, job.thinking, job.max_new_tokens, job.language = quant, thinking, max_new_tokens, language
-            job.rewriter = models.PE_HERETIC if heretic else f"official-{quant}"
+            job.rewriter = f"official-{quant}"
 
         mx.reset_peak_memory()
         try:
@@ -1422,7 +1418,7 @@ class Engine:
     def _reload_text_encoder(self) -> float:
         """Rebuild only the text encoder from the local snapshot, as QwenImage21Initializer.init does per component.
 
-        The LoRA touches only the transformer, so the TE reloads identically for turbo and non-turbo models.
+        Converted components retain their saved precision; the original BF16 suite stays unquantized.
         """
         import mlx.core as mx
         from mlx.utils import tree_flatten

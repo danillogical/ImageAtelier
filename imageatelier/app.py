@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictBool, StrictInt
 
-from imageatelier import ca, models, settings as settings_mod, sizes, styles
+from imageatelier import ca, models, suites, settings as settings_mod, sizes, styles
 from imageatelier.engine import EngineBusy, InvalidTransition, UnknownJob
 from imageatelier.store import Store, default_data_dir
 
@@ -157,6 +157,7 @@ class RunCreate(BaseModel):
     turbo: StrictBool | None = None
     transparent: StrictBool = False
     use_enhanced: StrictBool = False
+    model_suite: str | None = None
     image_model: str | None = None
     text_encoder: str | None = None
     variant: str | None = None  # legacy: rejected with a 400 (replaced by image_model/text_encoder)
@@ -186,7 +187,7 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
 
         def provider():
             s = settings.get()
-            return {**s, "default_steps": settings_mod.NON_TURBO_DEFAULT_STEPS, "default_turbo_steps": s["steps"]}
+            return {**s, "default_steps": s["steps"]}
 
         engine = Engine(settings_provider=provider, compose_dir=store.root / "compose")
 
@@ -411,38 +412,25 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
             except Exception:  # noqa: BLE001
                 log.exception("event handling failed")
 
-    def image_models() -> list[dict]:
-        return [models.image_status(n) for n in models.IMAGE_MODELS]
-
-    def te_models() -> list[dict]:
-        return [models.te_status(n) for n in models.TEXT_ENCODERS]
-
-    def pe_models() -> list[dict]:
-        return [
-            {"kind": "pe", "name": m.name, "mode": m.mode, "quant": m.quant, "variant": m.variant, "source": m.source,
-             "repo": m.repo or None, "approx_gb": m.approx_gb, **models.pe_status(m.name)}
-            for m in models.PE_MODELS.values()
-        ]
-
     def resident_event() -> dict:
         r = engine.resident() if hasattr(engine, "resident") else {}
         return {"type": "model", "state": r.get("state", "unloaded"), "key": r.get("key"), "load_s": None}
 
     async def download_ticker() -> None:
-        was_active = False
+        previous = None
         while True:
             await asyncio.sleep(DOWNLOAD_EVENT_SECONDS)
-            active = (
-                any(models.is_image_downloading(n) for n in models.IMAGE_MODELS)
-                or any(models.is_te_downloading(n) for n in models.TEXT_ENCODERS)
-                or any(models.is_pe_downloading(n) for n in models.PE_MODELS)
-            )
-            if active or was_active:  # one trailing event carries the final state
-                broadcast("download", image_models() + te_models() + pe_models())
-            was_active = active
+            rows = await asyncio.to_thread(suites.list_suites)
+            signature = json.dumps(rows)
+            # Also catch a cached download or fast conversion that finishes between ticks.
+            if signature != previous:
+                broadcast("download", rows)
+                previous = signature
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
+        suites.start()
+        await asyncio.to_thread(suites.restore_download)
         loop = asyncio.get_running_loop()
 
         def on_engine_event(snap: dict) -> None:
@@ -475,6 +463,8 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
             if plain:
                 await plain.stop()
             ticker.cancel()
+            await asyncio.to_thread(models.stop_downloads)
+            await asyncio.to_thread(suites.stop)
             await asyncio.to_thread(engine.stop)
             loop.call_soon(events.put_nowait, None)  # FIFO after any events the worker just queued
             await consumer
@@ -570,33 +560,28 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         """Validate and pin everything a generation needs *now*: the parent (or a flattened copy), the enabled references,
         the run number. Returns a prepared context; submit_prepared() sends it to the engine later. Raises HTTPException."""
         cfg = settings.get()
-        turbo = cfg["turbo"] if body.turbo is None else body.turbo
-        if body.variant is not None:
-            raise HTTPException(400, "variant was replaced by image_model/text_encoder")
-        image_model = cfg["image_model"] if body.image_model is None else body.image_model
-        text_encoder = cfg["text_encoder"] if body.text_encoder is None else body.text_encoder
-        if image_model not in models.IMAGE_MODELS:
-            raise HTTPException(400, f"unknown image_model {image_model!r}; expected one of {sorted(models.IMAGE_MODELS)}")
-        if text_encoder not in models.TEXT_ENCODERS:
-            raise HTTPException(400, f"unknown text_encoder {text_encoder!r}; expected one of {sorted(models.TEXT_ENCODERS)}")
+        if body.turbo:
+            raise HTTPException(400, "Turbo is no longer supported")
+        if body.variant is not None or body.image_model is not None or body.text_encoder is not None:
+            raise HTTPException(400, "Choose model_suite; independent model parts are no longer supported")
+        selected_suite = body.model_suite or cfg["model_suite"]
+        if selected_suite not in suites.VARIANTS:
+            raise HTTPException(400, "Unknown Qwen-Image-2.1 suite")
+        turbo = False
+        quant = models.SUITE_QUANTS[selected_suite]
+        image_model = text_encoder = f"official-{quant}"
         if body.steps is not None:
             steps = body.steps
         else:
-            steps = cfg["steps"] if turbo == cfg["turbo"] else settings_mod.default_steps(turbo)
+            steps = cfg["steps"]
         if not body.prompt.strip():
             raise HTTPException(400, "prompt must be a non-empty string")
         try:
             settings_mod.validate_steps(steps, turbo)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
-        for part in (models.image_status(image_model), models.te_status(text_encoder)):
-            if part["state"] != "ready":
-                what = "image model" if part["kind"] == "image" else "text encoder"
-                state = {"downloading": "is still downloading", "not_installed": "isn't installed"}.get(part["state"], "isn't downloaded yet")
-                hint = f". {part['hint']}" if part.get("hint") else ""
-                raise HTTPException(409, f"The {what} ({part['label']}) {state}{hint}")
-            if part["kind"] == "image" and turbo and not part.get("turbo_lora_ready"):
-                raise HTTPException(409, "The turbo add-on isn't downloaded yet; download it or switch to Standard mode")
+        if suites.status(selected_suite)["state"] != "ready":
+            raise HTTPException(409, f"The complete {selected_suite.upper()} suite is not ready; open Settings")
 
         # A queued edit is pinned to the current run as of now, not as of when it starts.
         parent = p["current_run"]
@@ -698,14 +683,9 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         prep = await prepare_generate(pid, p, RunCreate(prompt=body.prompt, seed=body.seed, transparent=body.transparent))
         mode = "t2i" if prep["parent"] is None else "i2i"
         try:
-            if cfg["pe_variant"] == "heretic":
-                name = f"{mode}-heretic-8bit"
-                if models.pe_status(name)["state"] != "ready":
-                    raise HTTPException(409, f"prompt enhancer {name!r} is not installed; copy {models.PE_MODELS[name].folder}/ into {models.models_dir()}")
-            else:
-                name = models.pe_name(mode, cfg["pe_quant"])
-                if models.pe_status(name)["state"] != "ready":
-                    raise HTTPException(409, f"prompt enhancer {name!r} is not downloaded")
+            name = models.pe_name(mode, cfg["pe_quant"])
+            if suites.status(cfg["model_suite"])["state"] != "ready":
+                raise HTTPException(409, "The complete selected suite is not ready; open Settings")
             chain_id = uuid.uuid4().hex[:10]
             style = prep["style"]
             job = {"kind": "enhance", "prompt": body.prompt + styles.enhancer_hint(style, mode), "mode": mode, "quant": cfg["pe_quant"], "thinking": thinking,
@@ -913,7 +893,9 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         cfg = settings.get()
         if not body.prompt.strip():
             raise HTTPException(400, "prompt must be a non-empty string")
-        quant = cfg["pe_quant"] if body.quant is None else body.quant
+        if body.quant is not None:
+            raise HTTPException(400, "Choose a complete model_suite in Settings instead of an enhancer quantization")
+        quant = cfg["pe_quant"]
         language = cfg["pe_language"] if body.language is None else body.language
         thinking = cfg["pe_thinking"] if body.thinking is None else body.thinking
         if quant not in settings_mod.PE_QUANTS:
@@ -924,14 +906,9 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         if parent is not None and not store.image_path(pid, parent).is_file():
             raise HTTPException(409, f"current run {parent} has no image on disk")
         mode = "t2i" if parent is None else "i2i"
-        if cfg["pe_variant"] == "heretic":
-            name = f"{mode}-heretic-8bit"  # replaces the official rewriter of this mode whatever the quant
-            if models.pe_status(name)["state"] != "ready":
-                raise HTTPException(409, f"prompt enhancer {name!r} is not installed; copy {models.PE_MODELS[name].folder}/ into {models.models_dir()}")
-        else:
-            name = models.pe_name(mode, quant)
-            if models.pe_status(name)["state"] != "ready":
-                raise HTTPException(409, f"prompt enhancer {name!r} is not downloaded")
+        name = models.pe_name(mode, quant)
+        if suites.status(cfg["model_suite"])["state"] != "ready":
+            raise HTTPException(409, "The complete selected suite is not ready; open Settings")
         style = styles.normalize(p.get("style"))
         job = {
             "kind": "enhance", "prompt": body.prompt + styles.enhancer_hint(style, mode), "mode": mode, "quant": quant, "thinking": thinking,
@@ -1044,6 +1021,10 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
     @api.put("/settings")
     def put_settings(partial: dict):
         try:
+            name = partial.get("model_suite")
+            if isinstance(name, str) and name in suites.VARIANTS and name != settings.get()["model_suite"]:
+                if suites.status(name)["state"] != "ready":
+                    raise HTTPException(409, "The complete suite must be ready before selecting it")
             return settings.update(partial)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
@@ -1055,61 +1036,33 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
 
     @api.get("/models")
     def list_models():
-        return image_models() + te_models() + pe_models()
+        return suites.list_suites()
 
-    @api.post("/models/pe/{name}/download", status_code=202)
-    def download_pe(name: str):
-        if name not in models.PE_MODELS:
-            raise HTTPException(404, f"unknown prompt enhancer {name!r}")
-        if models.PE_MODELS[name].source == "local":
-            raise HTTPException(409, f"{name!r} is a local model and cannot be downloaded; copy {models.PE_MODELS[name].folder}/ into {models.models_dir()}")
-        return {"started": models.start_pe_download(name)}
+    @api.post("/models/bf16/download", status_code=202)
+    def download_suite():
+        return {"started": suites.start_download()}
 
-    @api.post("/models/image/{name}/download", status_code=202)
-    def download_image(name: str):
-        if name not in models.IMAGE_MODELS:
-            raise HTTPException(404, f"unknown image model {name!r}")
-        return {"started": models.start_image_download(name)}
+    @api.post("/models/bf16/pause", status_code=202)
+    def pause_suite_download():
+        return {"paused": models.pause_download("suite:bf16")}
 
-    @api.post("/models/text_encoder/{name}/download", status_code=202)
-    def download_text_encoder(name: str):
-        te = models.TEXT_ENCODERS.get(name)
-        if te is None:
-            raise HTTPException(404, f"unknown text encoder {name!r}")
-        if te.source == "local":
-            raise HTTPException(409, f"{te.label} is a local model and cannot be downloaded. {models.te_status(name).get('hint', '')}".strip())
-        return {"started": models.start_te_download(name)}
+    @api.post("/models/bf16/resume", status_code=202)
+    def resume_suite_download():
+        return {"started": suites.start_download()}
 
-    def delete_idle(delete, name: str) -> int:
-        with engine.maintenance():
-            return delete(name)
-
-    async def delete_part(delete, name: str) -> dict:
-        """Delete a downloaded part with the engine idle and nothing resident; broadcasts on the loop thread."""
+    @api.post("/models/{name}/convert", status_code=202)
+    def convert_suite(name: str):
         try:
-            freed = await asyncio.to_thread(delete_idle, delete, name)  # maintenance() blocks until the worker drops
-        except (EngineBusy, models.DeleteRefused) as exc:
+            return {"started": suites.start_conversion(name, engine.maintenance)}
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+        except suites.SuiteError as exc:
             raise HTTPException(409, str(exc))
-        broadcast("download", image_models() + te_models() + pe_models())
-        return {"deleted": True, "freed_bytes": freed}
 
-    @api.delete("/models/image/{name}")
-    async def delete_image(name: str):
-        if name not in models.IMAGE_MODELS:
-            raise HTTPException(404, f"unknown image model {name!r}")
-        return await delete_part(models.delete_image, name)
-
-    @api.delete("/models/text_encoder/{name}")
-    async def delete_text_encoder(name: str):
-        if name not in models.TEXT_ENCODERS:
-            raise HTTPException(404, f"unknown text encoder {name!r}")
-        return await delete_part(models.delete_te, name)
-
-    @api.delete("/models/pe/{name}")
-    async def delete_pe(name: str):
-        if name not in models.PE_MODELS:
-            raise HTTPException(404, f"unknown prompt enhancer {name!r}")
-        return await delete_part(models.delete_pe, name)
+    @api.post("/models/{kind}/{name}/download")
+    @api.delete("/models/{kind}/{name}")
+    def retired_part_operation(kind: str, name: str):
+        raise HTTPException(410, "Independent model parts are no longer supported; use complete suites in Settings")
 
     app.include_router(api)
     app.router.routes.extend(ca.ROUTES)  # /ca and /ca/rootCA.crt, ahead of the static catch-all mount

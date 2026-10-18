@@ -3,7 +3,7 @@ import { S, FINAL } from "./state.js";
 import { h, clear, fill, add, toast, confirmDialog, copyText, fmtSecs, fmtDate, timeAgo, syncList, setText, setClass, fmtTokens } from "./util.js";
 import * as jobsUI from "./jobs.js";
 import * as refsUI from "./refs.js";
-import { modeOptions, optName, stepsAfter, currentEncoder, encoderName } from "./imagemodels.js";
+import { encoderName } from "./imagemodels.js";
 import { icon } from "./icons.js";
 import { openLightbox } from "./lightbox.js";
 import { openCropper } from "./cropper.js";
@@ -354,82 +354,22 @@ function renderTransp() {
     : "Transparent background: OFF. Turn on to cut out the subject (PNG with transparency).";
 }
 
-// ---- image model picker in the composer ----
-// The dropdown picks the mode (Turbo / Standard) for the image model and text encoder chosen in Settings.
+// ---- complete-suite indicator in the composer ----
 let pickSig = "";
-let pickOpen = false;
-const optShort = (o) => (o.turbo ? "⚡" : "Std");
-const isResident = (o) => S.resident.state === "loaded" && S.resident.key?.[0] === "image" && S.resident.key[1] === S.settings.image_model && S.resident.key[2] === S.settings.text_encoder && !!S.resident.key[3] === o.turbo;
-function closePickMenu() {
-  pickOpen = false;
-  document.querySelector(".pick-menu")?.remove();
-  elProj.pickBtn?.setAttribute("aria-expanded", "false");
-}
-async function choose(o) {
-  closePickMenu();
-  if (o.turbo === S.settings.turbo) return;
-  try {
-    S.settings = await api("PUT", "/settings", { turbo: o.turbo });
-  } catch (e) {
-    toast(e.message, "error");
-  }
-  announceConfig();
-}
-function openPickMenu(opts) {
-  closePickMenu();
-  pickOpen = true;
-  const menu = h("div", { class: "pick-menu", role: "listbox" }, opts.map((o) => {
-    const on = o.turbo === S.settings.turbo;
-    return h("button", { class: `pick-item${on ? " on" : ""}`, type: "button", role: "option", "aria-selected": on, onclick: () => choose(o) },
-      h("span", { class: "pi-check" }, on ? icon("check", 14) : null),
-      h("span", { class: "pi-main" }, h("b", {}, optName(o)), h("small", { class: "dim" }, `${stepsAfter(o)} steps`)),
-      isResident(o) ? h("span", { class: "pi-loaded", title: "Currently loaded in memory" }, h("i", {}), "loaded") : null);
-  }));
-  document.body.append(menu);
-  const r = elProj.pickBtn.getBoundingClientRect();
-  const w = menu.offsetWidth;
-  menu.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`;
-  menu.style.bottom = `${innerHeight - r.top + 8}px`;
-  elProj.pickBtn.setAttribute("aria-expanded", "true");
-}
 function renderPicker() {
   if (!elProj.pick || !S.proj || !S.settings) return;
-  const ro = isRO();
-  const opts = modeOptions();
-  const cur = { turbo: S.settings.turbo };
-  const te = currentEncoder();
-  const teOk = te?.state === "ready";
-  const sig = JSON.stringify([opts, cur, S.settings.steps, S.settings.image_model, S.settings.text_encoder, ro, S.models.length, teOk, opts.map(isResident), pickOpen]);
+  const suite = S.models.find((m) => m.name === S.settings.model_suite);
+  const ready = suite?.state === "ready";
+  const label = `Qwen-Image-2.1 · ${S.settings.model_suite.toUpperCase()}`;
+  const sig = JSON.stringify([label, ready, isRO()]);
   if (sig === pickSig) return;
   pickSig = sig;
-  const curAvail = opts.some((o) => o.turbo === cur.turbo);
-  elProj.pick.classList.toggle("ro", ro);
-  if (!S.models.length) return clear(elProj.pick); // not loaded yet: show nothing rather than a wrong "no model"
-  if (!opts.length) {
-    return fill(elProj.pick, h("button", { class: "pick-btn none", type: "button", title: "No image model is downloaded", onclick: () => openSettings({ focus: "model", message: "The image model isn't downloaded yet. Download it below." }) },
-      h("span", { class: "pick-long" }, "No model – open Settings"), h("span", { class: "pick-short" }, "No model")));
-  }
-  const label = `${optName(cur)} · ${S.settings.steps} steps${teOk ? "" : " (text encoder not ready)"}`;
-  if (opts.length === 1 && curAvail && teOk) {
-    return fill(elProj.pick, h("span", { class: "pick-static", title: label }, h("span", { class: "pick-long" }, optName(cur)), h("span", { class: "pick-short" }, optShort(cur))));
-  }
-  if (pickOpen && !ro) requestAnimationFrame(() => pickOpen && openPickMenu(opts)); // keep an open menu in step with changes
-  fill(elProj.pick, h("button", {
-    class: `pick-btn${curAvail && teOk ? "" : " warn"}`, type: "button", disabled: ro, "aria-haspopup": "listbox", "aria-expanded": "false",
-    title: !teOk ? "The selected text encoder isn't ready; open Settings" : curAvail ? `${label}${ro ? " (read-only while viewing an older image)" : ""}` : `${optName(cur)} isn't available; pick another mode`,
-    onclick: (e) => { e.stopPropagation(); pickOpen ? closePickMenu() : openPickMenu(opts); },
-  }, h("span", { class: "pick-long" }, optName(cur)), h("span", { class: "pick-short" }, optShort(cur)), h("span", { class: "pick-caret" }, "▾")));
-  elProj.pickBtn = elProj.pick.firstChild;
-  if (ro) closePickMenu();
+  fill(elProj.pick, h("button", { class: `pick-btn${ready ? "" : " warn"}`, type: "button", disabled: isRO(),
+    title: ready ? label : "The complete suite is not ready; open Settings",
+    onclick: () => openSettings({ message: ready ? "" : "Prepare a complete suite below to get started." }) },
+    h("span", { class: "pick-long" }, label), h("span", { class: "pick-short" }, S.settings.model_suite.toUpperCase())));
 }
-window.addEventListener("ws-config", () => renderPicker());
-document.addEventListener("pointerdown", (e) => pickOpen && !e.target.closest(".pick-menu, .pick-btn") && closePickMenu());
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && pickOpen) {
-    e.preventDefault();
-    closePickMenu();
-  }
-}, true);
+window.addEventListener("ws-config", renderPicker);
 
 // ---- composer content: prefill, draft, read-only history view ----
 const curRun = (P) => P.runs.find((r) => r.run === P.current_run) ?? null;
@@ -796,8 +736,8 @@ function residentLabel() {
   const { state, key } = S.resident;
   if (state === "loading") return ["loading", key?.[0] === "image" ? "Loading image model…" : "Loading prompt enhancer…"];
   if (state !== "loaded" || !key) return ["idle", "Idle"];
-  if (key[0] === "image") return ["loaded", `Image · ${key[3] ? "Turbo" : "Standard"} · ${encoderName(key[2])} encoder`];
-  return ["loaded", `Prompt enhancer · ${String(key[1]).startsWith("heretic") ? "Heretic" : "Qwen"}`];
+  if (key[0] === "image") return ["loaded", `Qwen-Image-2.1 · ${String(key[1]).replace("official-", "")}`];
+  return ["loaded", `Prompt enhancer · ${"Qwen"}`];
 }
 function renderChips() {
   const [cls, text] = residentLabel();
@@ -827,7 +767,7 @@ function setDraft(pid, text) {
     cleared.add(pid);
   }
 }
-const rewriterLabel = (r) => (!r ? "" : `Prompt enhancer · ${r.startsWith("heretic") ? "Heretic" : "Qwen"}`);
+const rewriterLabel = (r) => (!r ? "" : `Prompt enhancer · ${"Qwen"}`);
 function enhModeText(e) {
   return e.mode === "i2i" ? `Enhancing as an edit of #${e.refRun ?? S.proj?.current_run ?? "?"}` : "Enhancing for a new image";
 }
@@ -888,7 +828,7 @@ function renderEnhUI() {
   }
   enhView = null;
   if (enhanced && !ro) {
-    const label = `Enhanced prompt · ${enhanced.rewriter && String(enhanced.rewriter).startsWith("heretic") ? "Heretic" : "Qwen"}`;
+    const label = `Enhanced prompt · ${"Qwen"}`;
     fill(elProj.enh, h("div", { class: `enh-status enhanced-bar${enhanced.fell_back ? " warn" : ""}`, role: "status" },
       icon("spark", 16),
       h("span", { class: "grow" }, h("b", {}, label), enhanced.fell_back ? h("span", { class: "dim" }, " · it ran out of thinking room, so your prompt was kept") : null,
@@ -952,7 +892,7 @@ async function startEnhance() {
   try {
     const r = await api("POST", `/projects/${P.id}/enhance`, { prompt: text });
     const prior = S.enh?.jobId === r.job_id ? S.enh : {};
-    const rewriter = S.settings?.pe_variant === "heretic" ? "heretic-8bit" : `official-${S.settings?.pe_quant || "8bit"}`;
+    const rewriter = `official-${S.settings?.pe_quant || "8bit"}`;
     S.enh = { ...prior, rewriter: prior.rewriter ?? rewriter, pid: P.id, jobId: r.job_id, original: text, mode: r.mode, refRun, phase: prior.phase ?? null, tokens: prior.tokens ?? 0, state: prior.state ?? "queued" };
     syncComposer();
   } catch (e) {
@@ -961,8 +901,7 @@ async function startEnhance() {
 }
 function enhanceError(e) {
   if (e instanceof ApiError && e.status === 409) {
-    if (/prompt enhancer|heretic/i.test(e.message)) openSettings({ focus: "pe", message: /heretic/i.test(e.message) ? "Heretic isn't installed on the server. Choose Qwen, or copy the Heretic model folders into models/." : "The prompt enhancer isn't downloaded yet. Download it below." });
-    else openSettings({ focus: /text encoder/i.test(e.message) ? "te" : "model", message: e.message });
+    openSettings({ message: e.message });
   } else toast(e.message, "error");
 }
 async function cancelEnhance() {
@@ -1037,7 +976,7 @@ async function startChain() {
   try {
     const r = await api("POST", `/projects/${P.id}/enhance-and-generate`, { prompt: text, transparent: transpOn(P) });
     const prior = chain?.chainId === r.chain_id ? chain : {};
-    const rewriter = S.settings?.pe_variant === "heretic" ? "heretic-8bit" : `official-${S.settings?.pe_quant || "8bit"}`;
+    const rewriter = `official-${S.settings?.pe_quant || "8bit"}`;
     chain = { step: "enhance", generateJobId: null, e: { state: "queued", phase: null, tokens: 0, rewriter }, ...prior, pid: P.id, chainId: r.chain_id, enhanceJobId: r.enhance_job_id, run: r.run_reserved, original: text };
     syncComposer();
   } catch (e) {

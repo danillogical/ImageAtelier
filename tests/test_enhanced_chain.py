@@ -269,20 +269,20 @@ class TestDiscardAndUse:
         before = project(client, pid)["enhanced"]
         body = {"prompt": "x", "use_enhanced": True}
         if why == "part_missing":
-            ready["te"]["heretic-8bit"] = False
+            ready["te"]["official-8bit"] = False
             want = 409
         elif why == "empty_prompt":
             body["prompt"] = ""
             want = 400
         elif why == "bad_steps":
-            body["steps"] = 7
+            body["steps"] = 1
             want = 400
         else:
             body["transparent"] = "yes"
             want = 400
         assert client.post(f"/api/projects/{pid}/runs", json=body).status_code == want
         assert project(client, pid)["enhanced"] == before
-        ready["te"]["heretic-8bit"] = True
+        ready["te"]["official-8bit"] = True
         assert client.post(f"/api/projects/{pid}/runs", json={"prompt": "x", "use_enhanced": True}).status_code == 202
         assert project(client, pid)["enhanced"] is None
 
@@ -565,9 +565,9 @@ class TestChain:
                            ({"prompt": "x", "thinking": "maybe"}, 400), ({"prompt": "x", "language": "klingon"}, 400)):
             assert client.post(f"/api/projects/{pid}/enhance-and-generate", json=body).status_code == want, body
         assert client.post("/api/projects/nope/enhance-and-generate", json={"prompt": "x"}).status_code == 404
-        ready["te"]["heretic-8bit"] = False
+        ready["te"]["official-8bit"] = False
         assert client.post(f"/api/projects/{pid}/enhance-and-generate", json={"prompt": "x"}).status_code == 409
-        ready["te"]["heretic-8bit"] = True
+        ready["te"]["official-8bit"] = True
         pe_ready["t2i-8bit"] = False
         assert client.post(f"/api/projects/{pid}/enhance-and-generate", json={"prompt": "x"}).status_code == 409
         pe_ready["t2i-8bit"] = True

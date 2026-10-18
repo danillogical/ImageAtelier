@@ -1,5 +1,5 @@
 // Service worker: app shell is precached (stale-while-revalidate); /api/* is network-first; the SSE stream is never touched.
-const VERSION = "v18";
+const VERSION = "v21";
 const SHELL_CACHE = `imageatelier-shell-${VERSION}`;
 const API_CACHE = `imageatelier-api-${VERSION}`;
 const SHELL = [

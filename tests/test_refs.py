@@ -440,7 +440,7 @@ def eng(monkeypatch, tmp_path):
         return str(p)
 
     def job(mode="edit", parent=(896, 1184), nrefs=0, **extra):
-        j = {"kind": "generate", "prompt": "a cat", "mode": mode, "steps": 6, "turbo": True,
+        j = {"kind": "generate", "prompt": "a cat", "mode": mode, "steps": 6, "turbo": False,
              "output_path": str(tmp_path / f"out{n[0]}.png"), **extra}
         n[0] += 1
         if mode == "edit":

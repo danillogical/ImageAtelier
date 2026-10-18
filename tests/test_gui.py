@@ -79,12 +79,23 @@ def spawned(monkeypatch):
 
 
 def fake_webview(monkeypatch, port, on_start=None):
-    state = SimpleNamespace(created=[], started=0, port_open_at_start=None, destroyed=0)
+    state = SimpleNamespace(created=[], started=0, port_open_at_start=None, destroyed=0,
+                            html=[], port_open_at_destroy=None)
     mod = ModuleType("webview")
+
+    class Closing:
+        def __iadd__(self, callback):
+            state.close = callback
+            return self
+
+    def destroy():
+        state.port_open_at_destroy = listening(port)
+        state.destroyed += 1
 
     def create_window(*a, **kw):
         state.created.append((a, kw))
-        return SimpleNamespace(destroy=lambda: setattr(state, "destroyed", state.destroyed + 1))
+        return SimpleNamespace(destroy=destroy, load_html=state.html.append,
+                               events=SimpleNamespace(closing=Closing()))
 
     def start(*a, **kw):
         state.started += 1
@@ -125,8 +136,59 @@ def test_main_signal_closes_window(monkeypatch, port, spawned):
     state = fake_webview(monkeypatch, port, on_start)
     assert gui.main() == 0
     assert state.destroyed == 1
+    assert "Shutting down background server" in state.html[0]
+    assert state.port_open_at_destroy is False
     assert not listening(port)
     assert not (blocked_signals() & {signal.SIGINT, signal.SIGTERM})
+
+
+def test_close_keeps_window_open_until_server_stops(monkeypatch, port, spawned):
+    monkeypatch.setattr(gui, "server_command", lambda p: [sys.executable, "-c", LISTENER.format(port=p)])
+    entered, release = threading.Event(), threading.Event()
+    real_stop = gui.stop_server
+    def slow_stop(proc):
+        if proc.poll() is None:
+            entered.set()
+            assert release.wait(5)
+        real_stop(proc)
+    monkeypatch.setattr(gui, "stop_server", slow_stop)
+
+    def on_start():
+        try:
+            assert state.close() is False
+            assert entered.wait(5)
+            assert "Shutting down background server" in state.html[0]
+            assert state.destroyed == 0 and listening(port)
+            assert state.close() is False  # Repeated close does not launch another shutdown.
+            release.set()
+            deadline = time.monotonic() + 5
+            while state.destroyed == 0 and time.monotonic() < deadline:
+                time.sleep(.02)
+            assert state.destroyed == 1
+            assert state.port_open_at_destroy is False
+            assert state.close() is True
+            assert len(state.html) == 1
+        finally:
+            release.set()
+    state = fake_webview(monkeypatch, port, on_start)
+    assert gui.main() == 0
+    assert spawned[0].poll() is not None
+
+
+def test_unresponsive_server_is_killed_and_reaped():
+    proc = subprocess.Popen([sys.executable, "-u", "-c",
+        "import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); print('ready', flush=True); time.sleep(600)"],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert proc.stdout.readline().strip() == "ready"
+        gui.stop_server(proc, timeout=.05)
+        assert proc.returncode == -signal.SIGKILL
+        assert pid_gone(proc.pid)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        proc.stdout.close()
 
 
 def test_port_in_use_returns_1_without_spawning(monkeypatch, port):

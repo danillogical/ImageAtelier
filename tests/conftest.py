@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import contextlib
 from pathlib import Path
 import threading
 import time
@@ -13,8 +14,17 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from imageatelier import models
+from imageatelier import models, suites
 from imageatelier.app import create_app
+
+
+@pytest.fixture(autouse=True)
+def isolated_downloads(monkeypatch, tmp_path):
+    # App lifespans must never continue a real user's pending model download.
+    monkeypatch.setenv("IMAGEATELIER_HF_CACHE", str(tmp_path / "hf-cache"))
+    monkeypatch.setattr(models, "_download_root", lambda key: tmp_path / "downloads" / key.replace(":", "-"))
+    yield
+    models.stop_downloads()
 
 
 class StubModelManager:
@@ -64,6 +74,10 @@ class _Gate:
 
 class StubEngine:
     """Same public surface as imageatelier.engine.Engine, generating a tiny RGBA PNG per job."""
+
+    @contextlib.contextmanager
+    def maintenance(self):
+        yield
 
     def __init__(self):
         self.submitted: list[dict] = []  # copies of every job dict passed to submit()
@@ -272,63 +286,26 @@ class StubEngine:
 
 
 @pytest.fixture
-def ready(monkeypatch):
-    """Controllable part readiness. ready["image"]["official-8bit"] = False / ready["te"]["heretic-8bit"] = False
-    make that part not_downloaded (the local official encoder reports not_installed). ready["started"] /
-    ready["started_te"] record download requests."""
-    state = {"image": {n: True for n in models.IMAGE_MODELS}, "te": {n: True for n in models.TEXT_ENCODERS},
-             "started": [], "started_te": []}
-
-    def image_status(name):
-        m = models.IMAGE_MODELS[name]
-        return {"kind": "image", "name": name, "label": m.label, "approx_gb": m.approx_gb,
-                "state": "ready" if state["image"][name] else "not_downloaded", "turbo_lora_ready": True, "error": None}
-
-    def te_status(name):
-        t = models.TEXT_ENCODERS[name]
-        base = {"kind": "text_encoder", "name": name, "label": t.label, "approx_gb": t.approx_gb, "source": t.source}
-        if state["te"][name]:
-            return {**base, "state": "ready"}
-        if t.source == "local":
-            return {**base, "state": "not_installed", "error": None, "hint": f"Copy the folder {t.folder}/ into models"}
-        return {**base, "state": "not_downloaded", "error": None}
-
-    def start_image_download(name):
-        state["started"].append(name)
-        return True
-
-    def start_te_download(name):
-        state["started_te"].append(name)
-        return True
-
-    monkeypatch.setattr(models, "image_status", image_status)
-    monkeypatch.setattr(models, "te_status", te_status)
-    monkeypatch.setattr(models, "start_image_download", start_image_download)
-    monkeypatch.setattr(models, "start_te_download", start_te_download)
-    monkeypatch.setattr(models, "is_image_downloading", lambda n: False)
-    monkeypatch.setattr(models, "is_te_downloading", lambda n: False)
+def pe_ready(monkeypatch):
+    state = {n: True for n in models.PE_MODELS}
+    state["started"] = []
+    monkeypatch.setattr(models, "pe_status", lambda name: {"state": "ready" if state[name] else "not_downloaded"})
     return state
 
 
 @pytest.fixture
-def pe_ready(monkeypatch):
-    """Controllable enhancer readiness: pe_ready['t2i-8bit'] = False makes it not_downloaded."""
-    state = {n: True for n in models.PE_MODELS}
-    started = []
-
-    def pe_status(name):
-        m = models.PE_MODELS[name]
-        return {"name": name, "state": "ready" if state[name] else "not_downloaded", "mode": m.mode,
-                "quant": m.quant, "error": None}
-
-    def start_pe_download(name):
-        started.append(name)
-        return True
-
-    monkeypatch.setattr(models, "pe_status", pe_status)
-    monkeypatch.setattr(models, "start_pe_download", start_pe_download)
-    monkeypatch.setattr(models, "is_pe_downloading", lambda n: False)
-    state["started"] = started
+def ready(monkeypatch, pe_ready):
+    state = {"image": {n: True for n in models.IMAGE_MODELS}, "te": {n: True for n in models.TEXT_ENCODERS},
+             "started": [], "started_te": []}
+    def status(name, **kwargs):
+        quant = models.SUITE_QUANTS[name]
+        model = f"official-{quant}"
+        ok = state["image"][model] and state["te"][model] and all(pe_ready[f"{m}-{quant}"] for m in ("t2i", "i2i"))
+        return {"kind": "suite", "name": name, "label": name.upper(), "state": "ready" if ok else "not_downloaded",
+                "can_convert": True, "error": None}
+    monkeypatch.setattr(suites, "status", status)
+    monkeypatch.setattr(suites, "list_suites", lambda: [status(n) for n in suites.VARIANTS])
+    monkeypatch.setattr(suites, "is_active", lambda: False)
     return state
 
 
@@ -397,4 +374,3 @@ def patch_parts(monkeypatch):
         return Path("/nowhere"), Path("/nowhere/te"), (Path("/nowhere/lora") if turbo else None)
 
     monkeypatch.setattr(models, "resolve_parts", resolve_parts)
-    monkeypatch.setattr(models, "compose", lambda *a, **kw: Path("/nowhere/composed"))

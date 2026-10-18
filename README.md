@@ -1,115 +1,103 @@
 # ImageAtelier
 
-A small home-network web app for generating and editing images with **Qwen-Image-2.1-Heretic** on Apple Silicon (MLX).
-A *project* is one image lineage: the first prompt is text-to-image, every later prompt edits the project's current image.
-Every run keeps its prompt, settings and image. It installs to a phone's Home Screen as a PWA.
+A home-network web app for creating and editing images with official **Qwen-Image-2.1** on Apple Silicon (MLX).
+A project keeps an image lineage: the first prompt creates an image, and later prompts edit its current image.
+Reference images, transparent output, prompt enhancement and generation history are supported.
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 14 or newer, 32 GB RAM or more recommended
-- About 18 GB of disk for the 8-bit image model (plus a little for the turbo LoRA), and about 10.5 GB for each prompt rewriter you use
-- [uv](https://docs.astral.sh/uv/) (`brew install uv`) and [Homebrew](https://brew.sh) (used to install `mkcert`)
+- Apple Silicon Mac, macOS 14 or newer; 48 GB RAM or more recommended for BF16, or 32 GB for Q8 inference
+- About **70.8 GB** for the complete original BF16 suite, plus space for each conversion
+- [uv](https://docs.astral.sh/uv/) and [Homebrew](https://brew.sh), used to install mkcert
+
+BF16 inference and initial conversion may need substantially more memory than quantized inference. A RAM recommendation
+is a starting point for choosing a converted suite, not a guarantee that the entire BF16 conversion fits in memory.
 
 ## Quickstart
 
-Copy or rsync this folder to the Mac that will run it (the `certs/ca/` folder carries the CA with it), then:
-
 ```sh
-./setup.sh                 # Python env, local CA, HTTPS certificate
-./setup.sh --model 8bit    # optional: also download a model now (the UI can download later)
-./run.sh                   # the app on HTTPS :443 and plain HTTP :80
+./setup.sh                    # dependencies, local CA and HTTPS certificate
+./setup.sh --model bf16       # optional: download the complete source suite now
+./local.sh                   # local Mac window, its own data in ./data-local
+./local.sh --no-gui           # local server in the terminal
+./run.sh                     # home-network server: HTTPS :443 and HTTP :80
+./run.sh --http              # debugging server on HTTP :8080
 ```
 
-`setup.sh` is safe to re-run. It regenerates the certificate when the host name or IP addresses change. Pass `--trust-local`
-to also add the CA to *this* Mac's keychain (it prompts for your password; nothing touches the keychain otherwise).
+`./generate-imageatelier-app.sh [folder]` builds a double-clickable launcher for `local.sh` in this checkout.
+Running `local.sh` again restarts the existing local window/server on the selected `PORT` (8000 by default).
+Closing the local window shows “Shutting down background server…” until the server has exited, then closes the app.
+Data lives in `./data` for the network server or `./data-local` for the local window; override with `IMAGEATELIER_DATA`.
+To start the network server at login, use `./install-launchd.sh`; remove it with `./install-launchd.sh --uninstall`.
 
-`./run.sh --http` serves everything over plain HTTP on :8080 for debugging. Set `PORT` / `CA_PORT` to change ports.
+## Model suites
 
-For use on this Mac only, `./local.sh` opens ImageAtelier in its own window on `localhost:8000`, with its own data in `./data-local`; quitting the window stops the server (`./local.sh --no-gui` serves in the terminal instead). `./generate-imageatelier-app.sh [folder]` builds `ImageAtelier.app`, a double-clickable launcher for `local.sh` in this checkout (drag it to Applications; regenerate it if the checkout moves).
-Data (projects, images, settings) lives in `./data` (override with `IMAGEATELIER_DATA`).
+Settings has one section, **Qwen-Image-2.1**, with four rows:
 
-To start at login: `./install-launchd.sh` (logs in `data/logs/`); remove with `./install-launchd.sh --uninstall`.
+| Suite | Action |
+|---|---|
+| BF16 | Download |
+| Q8 | Convert |
+| Q6 | Convert |
+| Q4 | Convert |
+
+Every suite contains the image transformer, full text/vision encoder, VAE, T2I prompt enhancer and I2I prompt enhancer.
+Only complete suites can be selected. Individual components cannot be downloaded, selected or mixed independently.
+BF16 downloads have Pause and Resume controls. Partial files are saved and resumed from their last downloaded byte.
+After two minutes without progress, downloads reconnect automatically, retrying with a delay of 5–60 seconds.
+Running downloads continue after restarting the app; an explicitly paused download stays paused until you resume it.
+Turbo and uncensored variants are no longer supported. Old choices migrate to the official Q8 suite and standard 40-step generation;
+old images and history remain on disk.
+
+The BF16 download uses pinned revisions of three official repositories:
+
+- [Qwen/Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1): image transformer, text/vision encoder, VAE and processor
+- [Qwen/Qwen-Image-2.1-PE-T2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-T2I): new-image prompt enhancer
+- [Qwen/Qwen-Image-2.1-PE-I2I](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-I2I): image-aware editing prompt enhancer
+
+Convert buttons stay disabled until all BF16 components are complete. Conversion is local and offline, runs one component
+at a time, and includes both prompt enhancers and the vision weights. Eligible transformer, text/vision and enhancer layers
+are quantized. The reference VAE is exported with the suite in its supported full precision. A converted suite becomes ready
+only after verification and atomic publication; a failed conversion leaves no selectable partial suite and can be retried.
+Generation is paused during conversion. Restarting the app stops an active conversion; its partial output is not treated as ready.
+
+With 6 GB reserved for macOS and other apps, the UI recommends BF16 on Macs with at least 48 GB RAM,
+and Q8 on Macs with 32–47 GB. No suite is marked recommended below 32 GB. Selecting a suite is always explicit.
+At 1024×1024 with text-encoder offload and VAE tiling disabled, measured peak model allocations were
+32.4 GB for BF16 and 22.9 GB for Q8. Q6 is estimated at 21.2 GB and Q4 at 19.4 GB, giving totals of
+27.2 GB and 25.4 GB with that overhead; both therefore also have a conservative 32 GB RAM recommendation.
+Those lower-bit estimates keep the full-precision VAE and activation memory fixed; they are not measured runs.
+VAE tiling may make Q6 or Q4 suitable for a conservative 24 GB budget, but that combination has not been benchmarked.
+Source downloads use the Hugging Face cache (`IMAGEATELIER_HF_CACHE` overrides it); converted suites live under
+`models/Qwen-Image-2.1/` (`IMAGEATELIER_MODELS_DIR` overrides `models/`). Existing unrelated model files are not deleted.
+Only one inference model is held in memory at a time. The model and enhancers inherit the Qwen Research License.
 
 ## Phone setup
 
-1. On the phone, open `http://<host>.local/ca` (for example `http://my-mac.local/ca`) and follow the steps
-   for your OS. On iOS: download the certificate, then *Settings, Profile Downloaded, Install*, then
-   *Settings, General, About, Certificate Trust Settings*, and switch on full trust.
-2. Open `https://<host>.local`, then *Share, Add to Home Screen*.
+1. Open `http://<host>.local/ca` and follow the certificate installation instructions. On iOS, enable full trust in
+   Settings → General → About → Certificate Trust Settings after installing the profile.
+2. Open `https://<host>.local` and choose Share → Add to Home Screen.
 
-The app is also served over plain HTTP on :80 (`http://<host>.local`), with no CA setup needed. Everything works there except the PWA install: browsers only enable service workers over HTTPS, so on HTTP *Add to Home Screen* gives a full-screen shortcut, not an offline-capable app, and traffic is unencrypted on your Wi-Fi. Both addresses share the same projects. Run `HTTP_MODE=ca ./run.sh` to restrict :80 to `/ca`, `/ca/rootCA.crt`, and a redirect to HTTPS.
-The CA private key never leaves `certs/ca/` and is not served.
-
-## Prompt enhancer
-
-The composer has an **Enhance** action that rewrites your prompt with Qwen's own prompt-enhancer models before you generate:
-text-to-image for an empty project, and an image-aware rewrite (I2I) once the project has an image to edit. Nothing is saved
-until you generate.
-
-| Model | 8-bit |
-|---|---|
-| T2I enhancer (`prithivMLmods/Qwen-Image-2.1-PE-T2I-MLX`) | 10.5 GB |
-| I2I enhancer (`prithivMLmods/Qwen-Image-2.1-PE-I2I-MLX`) | 10.5 GB |
-
-Download them from Settings (or `POST /api/models/pe/<name>/download`). Only **one model is in memory at a time**: enhancing
-loads the rewriter and keeps it, running an image swaps it for the image model, and the next enhance swaps back (a few seconds).
-*Thinking* trades speed for quality: about 8 s per rewrite with it off versus about 30 s with it on, on an M5 (on by default;
-change `pe_thinking` in Settings).
-
-### Local models (Heretic prompt enhancer and text encoder)
-
-Some models are not on the Hugging Face Hub and are installed by copying their folders into `models/` (or into the folder named
-by `IMAGEATELIER_MODELS_DIR`). The Heretic prompt enhancer is two of them: copy `Qwen-Image-2.1-PE-T2I-Heretic-MLX-8bit/` (new
-images) and `Qwen-Image-2.1-PE-I2I-Heretic-MLX-8bit/` (edits), each an mlx-vlm 8-bit conversion that includes its own
-`system_prompt.txt`, into `models/`, then choose **Settings, Prompt enhancer, Heretic (uncensored)**. Each is about 10.4 GB. It
-is abliterated (fewer refusals, slightly less steerable on style). Settings shows "not installed" and disables the choice until both
-folders are complete. The official text encoder (`Qwen-Image-2.1-TextEncoder-MLX-8bit/`) is installed the same way.
-`models/` is not part of git and is copied along with the project folder.
-
-## Memory
-
-Peak memory for image generation at 1024 px is about **20 GB** with *Low memory* on (the default; it frees the text encoder after
-each prompt for about 0.2 s per job); leave it on with 32 GB. A prompt rewriter needs about 12 to 13 GB while it is loaded.
-*VAE tiling* saves roughly another 2 GB but is a few seconds slower and changes pixels slightly. Only one generation runs at a time;
-other prompts queue.
-
-## Models and licence
-
-| Variant | Repo | Size |
-|---|---|---|
-| 8-bit | `vanch007/Qwen-Image-2.1-Heretic-mlx-8bit` | about 18 GB |
-
-That download is used as two parts: the **image model** (the official Qwen-Image 2.1 transformer and VAE) and the **Heretic text encoder**.
-They are chosen separately in Settings, and an *official* text encoder can be installed locally by copying
-`Qwen-Image-2.1-TextEncoder-MLX-8bit/` into `models/` (see API.md, "Model parts and composed folders").
-
-Turbo mode uses the `Viggle/Qwen-Image-2.1-viggle-turbo` LoRA (6 or 8 steps). Revisions are pinned in `imageatelier/models.py`.
-Qwen-Image weights are under the Qwen research licence: check its terms before any use beyond personal and research use.
-The "Heretic" text encoder is **abliterated** (refusal behaviour removed), so it will not decline prompts; the people who can reach
-this server are responsible for what it generates. Keep it on a trusted network.
+Both network addresses share projects. HTTP supports the app except the offline PWA installation, which needs HTTPS.
+`HTTP_MODE=ca ./run.sh` restricts the HTTP listener to certificate setup and HTTPS redirects.
+The CA private key is never served. `./setup.sh --trust-local` also trusts the CA on this Mac.
 
 ## Troubleshooting
 
-- **Certificate name mismatch after your IP or host name changed:** re-run `./setup.sh`, then restart `./run.sh`. Devices keep
-  trusting the same CA, so phones need no new setup.
-- **A UI update does not show on the phone:** the service worker serves the app shell from cache. Bump `VERSION` in
-  `imageatelier/static/sw.js` whenever static files change, then reload twice.
-- **The `.local` name does not resolve:** use the IP address shown by `./run.sh` (the certificate includes it), or check that the
-  phone is on the same Wi-Fi network as the Mac.
-- **Port already in use:** another server (or a previous run) holds 443 or 80; set `PORT=` / `CA_PORT=` (e.g. `PORT=8443 CA_PORT=8080 ./run.sh`). macOS lets a normal user bind ports below 1024 only on all interfaces, so `BIND=127.0.0.1` with port 443/80 needs a high port instead.
-- **Service worker and "Add to Home Screen" need HTTPS**, so a plain-HTTP address will not give the full app experience.
+- Certificate name mismatch: re-run `./setup.sh` after changing host names or IP addresses.
+- Stale UI: reload twice after an app update; the service worker refreshes the cached shell.
+- Port occupied: stop the previous server or change `PORT`/`CA_PORT`.
+- Interrupted download: automatic retries preserve progress. Use Pause to stop retries and Resume to continue.
+- Failed download: fix the reported access or disk-space problem, then use Retry; completed files are kept.
+- Failed conversion: the row shows the error. Resolve it, then retry Convert.
 
-## Changing dependencies
+## Development
 
-After changing dependencies in `pyproject.toml`, run `./relock.sh` instead of `uv lock` / `uv add`. If your shell sets
-`UV_INDEX_URL` / `UV_DEFAULT_INDEX` to an internal index, uv writes that index into `uv.lock`, which other Macs cannot reach;
-`relock.sh` re-locks against public PyPI.
-
-## Tests
+After dependency changes, use `./relock.sh` so the lock file retains public PyPI URLs.
 
 ```sh
-uv sync --extra dev && .venv/bin/python -m pytest
+uv sync --inexact --extra dev
+.venv/bin/python -m pytest
 ```
 
-(`./setup.sh` runs a plain `uv sync`, which removes the dev extras again; run the command above whenever you want to test.)
-The API is documented in `API.md`.
+The API is documented in [API.md](API.md).

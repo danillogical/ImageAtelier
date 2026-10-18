@@ -97,7 +97,7 @@ def h(monkeypatch, tmp_path, ready, pe_ready):
 
     def gen():
         ns.n += 1
-        return e.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": True,
+        return e.submit({"kind": "generate", "prompt": "a cat", "mode": "t2i", "steps": 6, "turbo": False,
                          "output_path": str(tmp_path / f"out{ns.n}.png")})
 
     ns.enh, ns.gen = enh, gen
