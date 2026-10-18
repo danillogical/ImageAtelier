@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-async function settings(state) {
+async function settings(state, { confirm = true, q8 = "not_converted" } = {}) {
   const calls = [];
+  const dialogs = [];
   const body = { children: [], append(node) { this.children.push(node); } };
   const events = new Map();
   const context = vm.createContext({
@@ -17,15 +18,20 @@ async function settings(state) {
   });
   const S = { settings: { model_suite: "q8" }, models: [] };
   const rows = [{ kind: "suite", name: "bf16", label: "BF16", state, bytes_done: 100, bytes_total: 200, retry_in: 5 },
-    { kind: "suite", name: "q8", label: "Q8", state: "not_converted", can_convert: false }];
+    { kind: "suite", name: "q8", label: "Q8", state: q8, can_convert: state === "ready" }];
   const h = (tag, attrs, ...children) => ({ tag, attrs, children: children.flat().filter(Boolean), classList: { add() {}, remove() {} } });
   const api = async (method, path) => {
     calls.push([method, path]);
+    if (method === "DELETE") {
+      rows.find((r) => path === `/models/${r.name}`).state = "not_downloaded";
+      return { deleted: true, freed_bytes: 100 };
+    }
     return path === "/models" ? rows : path === "/settings" ? S.settings : {};
   };
   const mocks = {
     "./api.js": { api }, "./state.js": { S }, "./icons.js": { icon: () => null },
-    "./util.js": { h, fill: (node, ...children) => { node.children = children; }, toast() {}, fmtBytes: String },
+    "./util.js": { h, fill: (node, ...children) => { node.children = children; }, toast() {}, fmtBytes: String,
+      confirmDialog: async (options) => { dialogs.push(options); return confirm; } },
   };
   const mod = new vm.SourceTextModule(await readFile(new URL("../imageatelier/static/js/settings.js", import.meta.url), "utf8"), { context });
   await mod.link(async (name) => {
@@ -39,8 +45,36 @@ async function settings(state) {
   const all = [];
   const visit = (node) => { if (node && typeof node === "object") { all.push(node); node.children?.forEach(visit); } };
   visit(body);
-  return { all, calls };
+  return { all, calls, dialogs, rows, S };
 }
+
+for (const name of ["bf16", "q8"]) {
+  test(`installed ${name} offers confirmed whole-suite deletion`, async () => {
+    const { all, calls, dialogs, rows, S } = await settings("ready", { q8: "ready" });
+    const button = all.find((n) => n.attrs?.["aria-label"] === `Delete ${name.toUpperCase()}`);
+    assert.ok(button);
+    assert.equal(button.attrs.disabled, false);
+    button.attrs.onclick({ stopPropagation() {} });
+    await new Promise(setImmediate);
+    assert.equal(dialogs.length, 1);
+    assert.match(dialogs[0].message, /entire.*suite/);
+    assert.ok(calls.some(([method, path]) => method === "DELETE" && path === `/models/${name}`));
+    assert.equal(rows.find((r) => r.name === name).state, "not_downloaded");
+    assert.equal(S.settings.model_suite, "q8");
+  });
+}
+
+test("cancelling confirmation never deletes files", async () => {
+  const { all, calls } = await settings("ready", { confirm: false });
+  all.find((n) => n.attrs?.["aria-label"] === "Delete BF16").attrs.onclick({ stopPropagation() {} });
+  await new Promise(setImmediate);
+  assert.ok(!calls.some(([method]) => method === "DELETE"));
+});
+
+test("active preparation disables deletion of installed suites", async () => {
+  const { all } = await settings("downloading", { q8: "ready" });
+  assert.equal(all.find((n) => n.attrs?.["aria-label"] === "Delete Q8").attrs.disabled, true);
+});
 
 for (const [state, label, action] of [["downloading", "Pause", "pause"], ["retrying", "Pause", "pause"],
   ["paused", "Resume", "resume"], ["failed", "Retry", "resume"], ["not_downloaded", "Download", "download"]]) {

@@ -43,6 +43,9 @@ Settings has one section, **Qwen-Image-2.1**, with four rows:
 
 Every suite contains the image transformer, full text/vision encoder, VAE, T2I prompt enhancer and I2I prompt enhancer.
 Only complete suites can be selected. Individual components cannot be downloaded, selected or mixed independently.
+Each installed suite has a Delete button with confirmation. Deletion unloads resident weights and is blocked while jobs,
+downloads or conversions are active. Deleting BF16 removes the pinned source checkpoints from the Hugging Face cache;
+existing conversions stay available, but new conversions require downloading BF16 again.
 BF16 downloads have Pause and Resume controls. Partial files are saved and resumed from their last downloaded byte.
 After two minutes without progress, downloads reconnect automatically, retrying with a delay of 5–60 seconds.
 Running downloads continue after restarting the app; an explicitly paused download stays paused until you resume it.

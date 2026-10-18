@@ -9,10 +9,10 @@ import subprocess
 import sys
 import threading
 import uuid
-from functools import lru_cache
+from functools import lru_cache, wraps
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
+from huggingface_hub import scan_cache_dir, snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
 
 VARIANTS = {"bf16": None, "q8": 8, "q6": 6, "q4": 4}
@@ -31,10 +31,19 @@ PATTERNS = {
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}
 _stopping = threading.Event()
+_operations = threading.Lock()
 
 
 class SuiteError(RuntimeError):
     pass
+
+
+def _serialized(operation):
+    @wraps(operation)
+    def run(*args, **kwargs):
+        with _operations:
+            return operation(*args, **kwargs)
+    return run
 
 
 def suite_dir() -> Path:
@@ -172,6 +181,7 @@ def is_active() -> bool:
     return converting or models._active("suite:bf16")
 
 
+@_serialized
 def start_download() -> bool:
     from imageatelier import models
     if source_parts() is not None:
@@ -191,6 +201,7 @@ def restore_download() -> None:
         start_download()
 
 
+@_serialized
 def start_conversion(name: str, maintenance=contextlib.nullcontext) -> bool:
     _check_variant(name)
     if name == "bf16":
@@ -211,6 +222,60 @@ def start_conversion(name: str, maintenance=contextlib.nullcontext) -> bool:
         _jobs[name] = job
         thread.start()
     return True
+
+
+@contextlib.contextmanager
+def _deletion_guard(path: Path):
+    import fcntl
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as guard:
+        try:
+            fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SuiteError("Another app is using these model files; close it before deleting") from None
+        yield
+
+
+@_serialized
+def delete(name: str, maintenance=contextlib.nullcontext) -> int:
+    """Delete one complete suite, unloading resident weights before touching files."""
+    from imageatelier import models
+    _check_variant(name)
+    if is_active():
+        raise SuiteError("Wait for the download or conversion to finish before deleting a suite")
+    with contextlib.ExitStack() as stack:
+        # Use the same lock as conversion, including conversions in another app process.
+        stack.enter_context(_deletion_guard(suite_dir() / ".conversion.lock"))
+        if name == "bf16":
+            stack.enter_context(_deletion_guard(models._download_root("suite:bf16") / "worker.lock"))
+        stack.enter_context(maintenance())
+        if name == "bf16":
+            from huggingface_hub.constants import HF_HUB_CACHE
+            cache = Path(models.cache_dir() or HF_HUB_CACHE)
+            freed = 0
+            if cache.exists():
+                info = scan_cache_dir(cache)
+                targets = set(SOURCES.values())
+                revisions = [rev.commit_hash for repo in info.repos for rev in repo.revisions
+                             if (repo.repo_id, rev.commit_hash) in targets]
+                strategy = info.delete_revisions(*revisions)
+                freed = strategy.expected_freed_size
+                # The Hub API also releases shared blobs, preserving other cached revisions.
+                strategy.execute()
+                if any((models._storage_folder(repo) / "snapshots" / rev).exists()
+                       for repo, rev in SOURCES.values()):
+                    raise SuiteError("Some BF16 cache files could not be deleted; check server logs")
+            models._intent("suite:bf16", "deleted")
+        else:
+            root = suite_dir() / name
+            if root.is_symlink():
+                raise SuiteError("Refusing to delete a suite directory that is a symbolic link")
+            freed = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
+            if root.exists():
+                shutil.rmtree(root)
+            with _lock:
+                _jobs.pop(name, None)
+        return freed
 
 
 def _convert(name: str, job: dict, maintenance) -> None:

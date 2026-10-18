@@ -1059,6 +1059,19 @@ def create_app(engine=None, data_dir=None) -> FastAPI:
         except suites.SuiteError as exc:
             raise HTTPException(409, str(exc))
 
+    @api.delete("/models/{name}")
+    async def delete_suite(name: str):
+        try:
+            freed = await asyncio.to_thread(suites.delete, name, engine.maintenance)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+        except (suites.SuiteError, EngineBusy) as exc:
+            raise HTTPException(409, str(exc))
+        except OSError as exc:
+            raise HTTPException(409, f"Could not delete the suite: {exc}")
+        broadcast("download", suites.list_suites())
+        return {"deleted": True, "freed_bytes": freed}
+
     @api.post("/models/{kind}/{name}/download")
     @api.delete("/models/{kind}/{name}")
     def retired_part_operation(kind: str, name: str):
