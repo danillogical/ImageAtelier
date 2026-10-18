@@ -5,11 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ImageAtelier: trust this server</title>
 <meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="/theme.css">
 <style>
-  :root { --bg:#161230; --panel:#1f1a45; --text:#f3ead6; --dim:#b9b1d6; --accent:#4db4ba; --accent2:#d4a84b; --accent-fg:#130f2b; --line:rgba(212,168,75,.24); --gold:#d4a84b; --plate:#f3ead6; --plate-ink:#221a46; --sky:linear-gradient(180deg,#161230 0%,#1b1640 50%,#2a2060 82%,#3d2d68 91%,#5a3f68 100%); }
-  @media (prefers-color-scheme: light) { :root { --bg:#f3ebd8; --panel:#fbf6e8; --text:#221a46; --dim:#575077; --accent:#1d6a71; --accent2:#8a6212; --accent-fg:#fff; --line:rgba(138,98,18,.26); --gold:#9a7216; --sky:linear-gradient(180deg,#f3ebd8 0%,#f1e8d6 60%,#f2e2cc 88%,#f4dcbf 100%); } }
   body { margin:0; background:var(--bg) var(--sky) fixed; color:var(--text); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; padding:max(20px,env(safe-area-inset-top)) 18px 40px; }
-  main { max-width:680px; margin:0 auto; position:relative; background:var(--panel); border:1px solid var(--gold); border-radius:20px; padding:22px 22px 8px; box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px color-mix(in srgb,var(--gold) 55%,transparent), 0 10px 40px rgba(6,3,24,.35); }
+  main { max-width:680px; margin:0 auto; position:relative; background:var(--panel); border:1px solid var(--gold); border-radius:20px; padding:22px 22px 8px; box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px color-mix(in srgb,var(--gold) 55%,transparent), var(--shadow); }
   main::before, main::after { content:""; position:absolute; top:8px; width:34px; height:34px; background:var(--gold); opacity:.85; -webkit-mask:url(/ornaments/corner.svg) center/contain no-repeat; mask:url(/ornaments/corner.svg) center/contain no-repeat; pointer-events:none; }
   main::before { left:8px; } main::after { right:8px; transform:scaleX(-1); }
   h1 { font-family:ui-serif,"New York","Iowan Old Style",Georgia,serif; text-align:center; font-size:26px; letter-spacing:-.02em; margin:8px 0 4px; }

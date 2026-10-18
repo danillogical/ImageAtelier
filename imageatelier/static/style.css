@@ -1,34 +1,3 @@
-:root {
-  color-scheme: dark;
-  --bg: #161230; --panel: #1f1a45; --panel2: #2a2358; --panel3: #372e6b;
-  --line: rgba(212,168,75,.22); --text: #f3ead6; --dim: #b9b1d6;
-  --accent: #4db4ba; --accent2: #d4a84b; --accent-fg: #130f2b;
-  --gold: #d4a84b; --plate: #f3ead6; --plate-ink: #221a46;
-  --danger: #ff8a80; --danger-fg: #130f2b; --ok: #6fdca6; --warn: #eab84f;
-  --shadow: 0 10px 40px rgba(6,3,24,.6);
-  --glass: rgba(31,26,69,.68);
-  --bg-low: #3a2b62;
-  --sky: linear-gradient(180deg, #161230 0%, #1b1640 50%, #2a2060 82%, #3d2d68 91%, #5a3f68 100%);
-  --r: 16px; --sidebar: 320px;
-  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-display: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
-}
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg: #f3ebd8; --panel: #fbf6e8; --panel2: #efe5cc; --panel3: #e3d7b8;
-    --line: rgba(138,98,18,.24); --text: #221a46; --dim: #575077;
-    --accent: #1d6a71; --accent2: #8a6212; --accent-fg: #fff;
-    --gold: #9a7216; --plate: #fbf6e8; --plate-ink: #221a46;
-    --danger: #c0302a; --danger-fg: #fff; --ok: #17724a; --warn: #855300;
-    --shadow: 0 10px 40px rgba(60,40,90,.18);
-    --glass: rgba(251,246,232,.74);
-    --bg-low: #f4dfc8;
-    --sky: linear-gradient(180deg, #f3ebd8 0%, #f1e8d6 60%, #f2e2cc 88%, #f4dcbf 100%);
-  }
-}
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg) var(--sky) fixed; color: var(--text); font: 15px/1.45 var(--font); -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
@@ -52,6 +21,7 @@ small { font-size: 12.5px; }
   background: var(--panel); border-right: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; padding: 2px 6px 8px; }
+.brand picture, .brand img { display: block; flex: none; }
 .brand img { border-radius: 7px; }
 .brand span, .top-title > div:first-child { font-family: var(--font-display); letter-spacing: .01em; }
 .side-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); padding: 10px 8px 0; }
@@ -188,7 +158,7 @@ small { font-size: 12.5px; }
 .sheet-wrap { align-items: center; justify-content: center; padding: 20px; }
 .sheet { width: min(520px, 100%); max-height: min(760px, 100%); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); transform: translateY(14px) scale(.98); transition: transform .25s cubic-bezier(.2,.8,.2,1); overflow: hidden; }
 .sheet-wrap.in .sheet { transform: none; }
-.sheet-head { display: flex; align-items: center; padding: 14px 10px 10px 20px; border-bottom: 1px solid var(--line); }
+.sheet-head { display: flex; align-items: center; padding: 14px 10px 10px 30px; border-bottom: 1px solid var(--line); }
 .sheet-head h3 { font-size: 18px; }
 .sheet-body { overflow-y: auto; padding: 6px 20px calc(18px + var(--sab)); overscroll-behavior: contain; }
 @media (max-width: 767.98px) {
@@ -317,8 +287,7 @@ small { font-size: 12.5px; }
 .jhead { display: flex; align-items: center; gap: 6px; }
 .jhead.row { padding-top: 6px; } .lh-title { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
 .logwrap { position: relative; }
-.logview { font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #07080a; color: #cfd3dc; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; overflow: auto; height: 190px; white-space: pre-wrap; word-break: break-word; }
-@media (prefers-color-scheme: light) { .logview { background: #15171c; color: #d8dbe3; } }
+.logview { font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--log-bg); color: var(--log-text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; overflow: auto; height: 190px; white-space: pre-wrap; word-break: break-word; }
 .logview .err { color: #ff8b8b; } .logview .warn { color: #ffc46b; }
 .jump { position: absolute; right: 10px; bottom: 10px; border: 0; border-radius: 99px; padding: 5px 12px; background: var(--accent); color: var(--accent-fg); font-size: 12px; font-weight: 650; box-shadow: var(--shadow); }
 .slogbox { border: 1px solid var(--line); border-radius: 12px; padding: 0 8px 8px; background: var(--panel2); margin-top: 4px; }
@@ -447,8 +416,6 @@ small { font-size: 12.5px; }
 .details:has(.d-refs) { max-height: 92%; }
 
 /* ---- transparent images ---- */
-:root { --ck1: #3a3e47; --ck2: #2a2d34; }
-@media (prefers-color-scheme: light) { :root { --ck1: #e4e6ec; --ck2: #ffffff; } }
 .checker { background-color: var(--ck2) !important; background-image: conic-gradient(var(--ck1) 25%, transparent 0 50%, var(--ck1) 0 75%, transparent 0) !important; background-size: 16px 16px !important; }
 .tile.checker, .proj img.checker { background-size: 10px 10px !important; }
 .transp-btn { flex: none; align-self: center; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel2); color: var(--dim); display: grid; place-items: center; transition: background .15s, color .15s, border-color .15s; }

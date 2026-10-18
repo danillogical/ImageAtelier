@@ -1,11 +1,13 @@
 // Service worker: app shell is precached (stale-while-revalidate); /api/* is network-first; the SSE stream is never touched.
-const VERSION = "v21";
+const VERSION = "v22";
 const SHELL_CACHE = `imageatelier-shell-${VERSION}`;
 const API_CACHE = `imageatelier-api-${VERSION}`;
 const SHELL = [
-  "/", "/style.css", "/manifest.webmanifest",
+  "/", "/ca.html", "/theme.css", "/style.css", "/manifest.webmanifest", "/manifest-dark.webmanifest", "/js/appearance.js",
   "/js/app.js", "/js/refs.js", "/js/cropper.js", "/js/gestures.js", "/js/jobs.js", "/js/imagemodels.js", "/js/api.js", "/js/util.js", "/js/icons.js", "/js/lightbox.js", "/js/settings.js", "/js/state.js", "/js/styles.js",
-  "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png", "/icons/favicon-32.png",
+  ...["light", "dark"].flatMap((mode) => ["icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png", "favicon-32.png"]
+    .map((file) => `/icons/${mode}/${file}`)),
+  "/ornaments/corner.svg", "/ornaments/diamond.svg", "/ornaments/divider.svg", "/ornaments/sparkle.svg",
 ];
 
 self.addEventListener("install", (e) => {
@@ -58,8 +60,6 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname === "/api/events" || req.headers.get("accept") === "text/event-stream") return;
   if (url.pathname.startsWith("/api/")) {
     e.respondWith(networkFirst(req));
-  } else if (req.mode === "navigate") {
-    e.respondWith(staleWhileRevalidate(new Request("/")));
   } else {
     e.respondWith(staleWhileRevalidate(req));
   }

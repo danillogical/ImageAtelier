@@ -14,22 +14,19 @@ HOST = "127.0.0.1"
 START_TIMEOUT = 120.0
 STOP_TIMEOUT = 15.0
 _SIGNALS = {signal.SIGINT, signal.SIGTERM}
-ICON = Path(__file__).resolve().parent / "static" / "icons" / "icon-512.png"
+STATIC = Path(__file__).resolve().parent / "static"
 SHUTDOWN_HTML = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>ImageAtelier</title>
-<style>
-:root { color-scheme: light dark; }
+<style>""" + (STATIC / "theme.css").read_text() + """
 body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-  background: #fbf6e8; color: #221a46; font: 17px/1.5 system-ui, sans-serif; }
+  background: var(--bg) var(--sky) fixed; color: var(--text); font: 17px/1.5 system-ui, sans-serif; }
 main { text-align: center; padding: 32px; }
 h1 { font: 600 28px/1.3 ui-serif, Georgia, serif; }
-p { color: #575077; }
-.spinner { width: 32px; height: 32px; margin: auto; border: 3px solid #e3d7b8;
-  border-top-color: #1d6a71; border-radius: 50%; animation: spin 1s linear infinite; }
+p { color: var(--dim); }
+.spinner { width: 32px; height: 32px; margin: auto; border: 3px solid var(--panel3);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-@media (prefers-color-scheme: dark) { body { background: #161230; color: #f3ead6; }
-  p { color: #b9b1d6; } .spinner { border-color: #372e6b; border-top-color: #4db4ba; } }
 </style></head><body><main role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div>
 <h1>Shutting down background server…</h1><p>ImageAtelier will close when shutdown is complete.</p>
 </main></body></html>"""
@@ -75,12 +72,16 @@ def stop_server(proc: subprocess.Popen, timeout: float = STOP_TIMEOUT) -> None:
 def _set_dock_icon() -> None:
     # The window runs in a bare Python process, so without this the Dock shows Python's generic icon.
     try:
-        from AppKit import NSApplication, NSImage
+        from AppKit import NSApplication, NSImage, NSAppearanceNameAqua, NSAppearanceNameDarkAqua
     except ImportError:  # pyobjc comes with pywebview on macOS; anywhere else keep the default icon
         return
-    image = NSImage.alloc().initWithContentsOfFile_(str(ICON))
+    app = NSApplication.sharedApplication()
+    appearance = app.effectiveAppearance().bestMatchFromAppearancesWithNames_(
+        [NSAppearanceNameAqua, NSAppearanceNameDarkAqua])
+    mode = "dark" if appearance == NSAppearanceNameDarkAqua else "light"
+    image = NSImage.alloc().initWithContentsOfFile_(str(STATIC / "icons" / mode / "icon-512.png"))
     if image is not None:
-        NSApplication.sharedApplication().setApplicationIconImage_(image)
+        app.setApplicationIconImage_(image)
 
 
 class Shutdown:

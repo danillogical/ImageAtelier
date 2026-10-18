@@ -1,10 +1,12 @@
 """Generate the PWA / app icons into imageatelier/static/icons/ (run: .venv/bin/python tools/make_icons.py).
 
-Art: a witch's drawing pen laid diagonally across a cream title-plate diamond, on a twilight sky with gold art-deco corners.
+Art: a witch's drawing pen across a parchment diamond with gold art-deco corners.
+Light and dark versions share the original pen geometry; only their parchment backgrounds change.
 All geometry is in unit coordinates (0..1) and rendered at 4x, then downscaled with LANCZOS.
 """
 
 import math
+import shutil
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
@@ -26,15 +28,18 @@ TEAL_SHADE = (34, 108, 120, 255)
 STEEL = (178, 186, 198, 255)
 STEEL_SHADE = (120, 130, 148, 255)
 
-SKY = [  # (v, colour) stops: indigo -> lavender -> peach -> gold glow
-    (0.00, (30, 24, 78)),
-    (0.35, (82, 62, 140)),
-    (0.62, (150, 120, 190)),
-    (0.82, (238, 168, 150)),
-    (1.00, (252, 208, 128)),
-]
-
-SKY_MID = (96, 72, 150, 255)
+PALETTES = {
+    "light": {
+        "sky": [(0, (243, 235, 216)), (0.5, (223, 206, 169)), (1, (188, 146, 83))],
+        "mid": (138, 109, 67, 255), "plate": PARCHMENT, "shade": PARCHMENT_SHADE,
+        "panel": (91, 65, 31, 65), "cloud": (226, 200, 150, 80), "cloud_hi": (250, 237, 204, 70),
+    },
+    "dark": {
+        "sky": [(0, (33, 28, 22)), (0.5, (54, 43, 31)), (1, (102, 80, 53))],
+        "mid": (54, 43, 31, 255), "plate": (73, 58, 41, 255), "shade": (57, 45, 32, 255),
+        "panel": (24, 19, 13, 90), "cloud": (153, 117, 61, 45), "cloud_hi": (194, 160, 98, 35),
+    },
+}
 
 MAC_INSET =100 / 1024  # macOS icon grid: 824pt body inside a 1024pt canvas
 
@@ -116,12 +121,13 @@ def detail_for(size: int) -> int:
 # ---------------------------------------------------------------- background
 
 
-def sky(size: int) -> Image.Image:
+def sky(size: int, palette: dict) -> Image.Image:
     img = Image.new("RGBA", (size, size))
     d = ImageDraw.Draw(img)
     for y in range(size):
         v = y / (size - 1)
-        for (v0, c0), (v1, c1) in zip(SKY, SKY[1:]):
+        stops = palette["sky"]
+        for (v0, c0), (v1, c1) in zip(stops, stops[1:]):
             if v <= v1:
                 col = lerp(c0, c1, (v - v0) / (v1 - v0))
                 break
@@ -129,15 +135,15 @@ def sky(size: int) -> Image.Image:
     return img
 
 
-def clouds(img: Image.Image, detail: int) -> None:
+def clouds(img: Image.Image, detail: int, palette: dict) -> None:
     """A faint, soft cloud band low in the sky."""
     size = img.width
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     puffs = [(0.10, 0.86, 0.20, 0.045), (0.30, 0.90, 0.22, 0.04), (0.55, 0.88, 0.2, 0.04), (0.78, 0.85, 0.22, 0.045), (0.95, 0.9, 0.18, 0.04)]
     for u, v, rx, ry in puffs:
-        d.ellipse([(u - rx) * size, (v - ry) * size, (u + rx) * size, (v + ry) * size], fill=(214, 160, 190, 120))
-        d.ellipse([(u - rx * 0.7) * size, (v - ry * 1.3) * size, (u + rx * 0.7) * size, (v + ry * 0.3) * size], fill=(238, 190, 190, 90))
+        d.ellipse([(u - rx) * size, (v - ry) * size, (u + rx) * size, (v + ry) * size], fill=palette["cloud"])
+        d.ellipse([(u - rx * 0.7) * size, (v - ry * 1.3) * size, (u + rx * 0.7) * size, (v + ry * 0.3) * size], fill=palette["cloud_hi"])
     img.alpha_composite(layer.filter(ImageFilter.GaussianBlur(size * 0.012)))
 
 
@@ -152,7 +158,6 @@ def sparkles(pen: Pen, detail: int) -> None:
 
 PANEL_D = 0.47  # corner panel hypotenuse: u + v = PANEL_D (parallel to the plate edge, with a gap of sky)
 CORNER_R = 0.225  # corner radius of the icon's rounded-rect mask, in unit coords
-PANEL_FILL = (44, 32, 86, 130)
 
 
 def frame_path(k: float) -> list:
@@ -164,7 +169,7 @@ def frame_path(k: float) -> list:
     return pts + [(CORNER_R, k), (reach, k)]
 
 
-def ornaments(pen: Pen, detail: int) -> None:
+def ornaments(pen: Pen, detail: int, palette: dict) -> None:
     """Dense, framed art-deco panel filling the triangle between each icon corner and the plate edge (same design mirrored)."""
     layer = Image.new("RGBA", pen.img.size, (0, 0, 0, 0))
     lp = Pen(layer, (pen.ox, pen.oy), pen.span)
@@ -178,7 +183,7 @@ def ornaments(pen: Pen, detail: int) -> None:
 
     for fu, fv in corners:
         td.polygon([pen.px(*m(p, fu, fv)) for p in ((0, 0), (D, 0), (0, D))], fill=255)
-        lp.poly([m(p, fu, fv) for p in ((0, 0), (D, 0), (0, D))], PANEL_FILL)
+        lp.poly([m(p, fu, fv) for p in ((0, 0), (D, 0), (0, D))], palette["panel"])
     # Clip to the rounded-rect mask (slightly inset) so panels follow the icon's curved corners.
     rr = Image.new("L", layer.size, 0)
     x0, y0 = pen.px(0.012, 0.012)
@@ -229,24 +234,24 @@ def diamond(h: float):
     return [(0.5, 0.5 - h), (0.5 + h, 0.5), (0.5, 0.5 + h), (0.5 - h, 0.5)]
 
 
-def plate(pen: Pen, detail: int) -> None:
+def plate(pen: Pen, detail: int, palette: dict) -> None:
     H = PLATE_H
     ow = 0.012 if detail == 0 else 0.0075
     pen.poly(diamond(H + 0.004), INK)
     pen.poly(diamond(H), GOLD)
     if detail == 0:
-        # At favicon size the cream pen would vanish on cream: keep a gold diamond outline over the twilight instead.
-        pen.poly(diamond(H - 0.035), SKY_MID)
+        # At favicon size the cream pen needs a darker diamond for contrast.
+        pen.poly(diamond(H - 0.035), palette["mid"])
         return
-    pen.poly(diamond(H - 0.011), PARCHMENT)
+    pen.poly(diamond(H - 0.011), palette["plate"])
     pen.poly(diamond(H - 0.021), GOLD)
-    pen.poly(diamond(H - 0.031), PARCHMENT)
+    pen.poly(diamond(H - 0.031), palette["plate"])
     # Highlight on the two upper-left outer edges, cel shading band on the two lower-right inner edges.
     top, right, bottom, left = diamond(H - 0.004)
     pen.outline([left, top], 0.003, GOLD_HI, closed=False)
     t, r, b, _ = diamond(H - 0.031)
     t2, r2, b2, _ = diamond(H - 0.085)
-    pen.poly([t, r, b, b2, r2, t2], PARCHMENT_SHADE)
+    pen.poly([t, r, b, b2, r2, t2], palette["shade"])
     pen.outline(diamond(H + 0.004), ow * 0.6, INK)
     pen.outline(diamond(H - 0.031), ow * 0.5, GOLD_SHADE)
 
@@ -419,8 +424,8 @@ def draw_pen(pen: Pen, detail: int) -> None:
     sh = Image.new("RGBA", pen.img.size, (0, 0, 0, 0))
     sp = Pen(sh, (pen.ox + pen.span * 0.012, pen.oy + pen.span * 0.018), pen.span)
     for poly in polys:
-        sp.poly(poly, (60, 30, 50, 120))
-        sp.outline(poly, ow * 2, (60, 30, 50, 120))
+        sp.poly(poly, (48, 31, 16, 120))
+        sp.outline(poly, ow * 2, (48, 31, 16, 120))
     pen.img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(pen.span * 0.012)))
 
     # Exactly symmetric flat pen, rotated onto the icon diagonal (nib to the upper right).
@@ -441,7 +446,7 @@ def draw_pen(pen: Pen, detail: int) -> None:
         outer = [xf(PX(x), HW(h)) for x, h in reversed(top)]
         bp.poly(inner + outer, 255)
     band = ImageChops.multiply(band.filter(ImageFilter.GaussianBlur(pen.span * 0.004)), sil)
-    tint = Image.new("RGBA", pen.img.size, (74, 40, 72, 0))
+    tint = Image.new("RGBA", pen.img.size, (74, 48, 26, 0))
     tint.putalpha(band.point(lambda v: round(v * 0.36)))
     pen.img.alpha_composite(tint)
     # Thin highlight on the opposite (upper-left) side of the long parts.
@@ -492,22 +497,23 @@ def trail(pen: Pen, detail: int) -> None:
             pen.stamp(end[0] + dx * da + nx * db, end[1] + dy * da + ny * db, w, CREAM if k != 1 else GOLD_HI)
 
 
-def icon(size: int, *, shape: str) -> Image.Image:
+def icon(size: int, *, shape: str, appearance: str = "light") -> Image.Image:
     """shape: 'round' (transparent corners, full canvas), 'full' (opaque square, art in safe zone), 'mac' (inset body with shadow)."""
     big = size * SS
     inset = round(big * MAC_INSET) if shape == "mac" else 0
     body = big - 2 * inset
-    layer = sky(body)
+    palette = PALETTES[appearance]
+    layer = sky(body, palette)
     detail = detail_for(size)
     span = body * (0.8 if shape == "full" else 1.0)
     pen = Pen(layer, (body / 2, body / 2), span)
     if detail >= 1:
-        clouds(layer, detail)
+        clouds(layer, detail, palette)
         pen = Pen(layer, (body / 2, body / 2), span)
     sparkles(pen, detail)
     if detail >= 1:
-        ornaments(pen, detail)
-    plate(pen, detail)
+        ornaments(pen, detail, palette)
+    plate(pen, detail, palette)
     hero(pen, detail)
     trail(pen, detail)
     if shape != "full":
@@ -517,7 +523,7 @@ def icon(size: int, *, shape: str) -> Image.Image:
     canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     if shape == "mac":
         shadow = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-        shadow.paste((20, 14, 43, 110), (inset, inset + round(big * 0.01)), layer.getchannel("A"))
+        shadow.paste((24, 17, 9, 110), (inset, inset + round(big * 0.01)), layer.getchannel("A"))
         canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(big * 0.012)))
     canvas.alpha_composite(layer, (inset, inset))
     return canvas.resize((size, size), Image.LANCZOS)
@@ -525,15 +531,20 @@ def icon(size: int, *, shape: str) -> Image.Image:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    icon(192, shape="round").save(OUT / "icon-192.png")
-    icon(512, shape="round").save(OUT / "icon-512.png")
-    # Maskable: full bleed, art inside the central 80% safe zone.
-    icon(512, shape="full").save(OUT / "maskable-512.png")
-    # iOS applies its own corner mask and dislikes transparency.
-    icon(180, shape="full").convert("RGB").save(OUT / "apple-touch-icon.png")
-    icon(32, shape="round").save(OUT / "favicon-32.png")
-    # Mac app icon source: body inset on the macOS grid with a soft shadow.
-    icon(1024, shape="mac").save(OUT / "icon-1024.png")
+    outputs = [("icon-192.png", 192, "round"), ("icon-512.png", 512, "round"),
+               ("maskable-512.png", 512, "full"), ("apple-touch-icon.png", 180, "full"),
+               ("favicon-32.png", 32, "round"), ("icon-1024.png", 1024, "mac")]
+    for mode in PALETTES:
+        folder = OUT / mode
+        folder.mkdir(exist_ok=True)
+        for filename, size, shape in outputs:
+            image = icon(size, shape=shape, appearance=mode)
+            if filename == "apple-touch-icon.png":
+                image = image.convert("RGB")
+            image.save(folder / filename)
+            # Preserve old install/launcher URLs with a light parchment fallback.
+            if mode == "light":
+                shutil.copyfile(folder / filename, OUT / filename)
     print(f"barrel half-width derivative sign changes: {barrel_sign_changes()} (max {BARREL_PEAK:.0f}px)")
     for k, (full, crop) in symmetry_check().items():
         print(f"pen symmetry, {k}: mean abs RGBA diff vs top-bottom mirror = {full:.4f} (whole canvas), {crop:.4f} (pen bbox)")

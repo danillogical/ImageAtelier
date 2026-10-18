@@ -1,3 +1,4 @@
+import "./appearance.js";
 import { api, ApiError, connectEvents } from "./api.js";
 import { S, FINAL } from "./state.js";
 import { h, clear, fill, add, toast, confirmDialog, copyText, fmtSecs, fmtDate, timeAgo, syncList, setText, setClass, fmtTokens } from "./util.js";
@@ -35,7 +36,9 @@ function buildShell() {
   el.tabs = h("div", { class: "tabs", role: "tablist" }, el.tabProjects, el.tabJobs);
   el.navGallery = h("a", { class: "nav-item", href: "#/gallery" }, icon("gallery"), "Gallery");
   el.sidebar = h("aside", { class: "sidebar" },
-    h("div", { class: "brand" }, h("img", { src: "/icons/favicon-32.png", width: 26, height: 26, alt: "" }), h("span", {}, "ImageAtelier")),
+    h("div", { class: "brand" }, h("picture", {},
+      h("source", { media: "(prefers-color-scheme: dark)", srcset: "/icons/dark/icon-192.png" }),
+      h("img", { src: "/icons/light/icon-192.png", width: 26, height: 26, alt: "" })), h("span", {}, "ImageAtelier")),
     h("button", { class: "btn primary block", onclick: newProject }, icon("plus", 18), "New project"),
     h("button", { class: "btn block from-image", type: "button", onclick: newFromImage }, icon("image", 18), "New from image…"),
     (el.file = h("input", { type: "file", accept: "image/*", hidden: true, onchange: onFilePicked })),

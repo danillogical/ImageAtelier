@@ -32,6 +32,11 @@ To start the network server at login, use `./install-launchd.sh`; remove it with
 
 ## Model suites
 
+The interface follows your system appearance: cream parchment in light mode and dark brown parchment in dark mode,
+with matching pen icons, favicons and install assets. The native Dock icon uses the appearance at launch.
+Regenerate both icon sets with `.venv/bin/python tools/make_icons.py`; SVG ornaments use the current theme's gold.
+An already installed home-screen icon may need to be re-added for the operating system to refresh it.
+
 Settings has one section, **Qwen-Image-2.1**, with four rows:
 
 | Suite | Action |

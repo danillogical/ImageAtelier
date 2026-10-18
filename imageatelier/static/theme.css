@@ -1,0 +1,35 @@
+/* Shared parchment palette for the studio, certificate page and native shutdown screen. */
+:root {
+  color-scheme: dark;
+  --bg: #211c16; --panel: #2b241c; --panel2: #362e23; --panel3: #453a2b;
+  --line: rgba(203,167,100,.28); --text: #f3e6cb; --dim: #c1ad8b;
+  --accent: #79c4bd; --accent2: #d4b16b; --accent-fg: #211c16;
+  --gold: #cba764; --plate: #30271d; --plate-ink: #f3e6cb;
+  --danger: #f09a87; --danger-fg: #211c16; --ok: #a3ce9b; --warn: #e4bd74;
+  --shadow: 0 10px 40px rgba(18,13,7,.5);
+  --glass: rgba(43,36,28,.85);
+  --bg-low: #30271c;
+  --sky: linear-gradient(180deg, #211c16 0%, #251f18 60%, #30271c 100%);
+  --ck1: #4c4234; --ck2: #362e23;
+  --log-bg: #1b1712; --log-text: #e2d4bc;
+  --r: 16px; --sidebar: 320px;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f3ebd8; --panel: #fbf6e8; --panel2: #efe5cc; --panel3: #e3d7b8;
+    --line: rgba(138,98,18,.24); --text: #30261c; --dim: #6b5943;
+    --accent: #1d6a71; --accent2: #8a6212; --accent-fg: #fff;
+    --gold: #9a7216; --plate: #fbf6e8; --plate-ink: #30261c;
+    --danger: #c0302a; --danger-fg: #fff; --ok: #17724a; --warn: #855300;
+    --shadow: 0 10px 40px rgba(60,40,18,.18);
+    --glass: rgba(251,246,232,.74);
+    --bg-low: #f4dfc8;
+    --sky: linear-gradient(180deg, #f3ebd8 0%, #f1e8d6 60%, #f2e2cc 88%, #f4dcbf 100%);
+    --ck1: #e3d9c5; --ck2: #fffdf6;
+  }
+}
