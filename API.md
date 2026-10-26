@@ -342,7 +342,8 @@ UI job processing continues in the shared engine. Configured listeners are resto
 Every route requires `Authorization: Bearer <access_key>`. No UI, project, filesystem, or history routes are exposed.
 
 - `GET /health` reports `{service:"imageatelier", mode:"memory", stores_images:false, provider:"qwen-image-2.1", active_requests,
-  actions:["enhance","generate"], max_reference_images:10, polling:true, result_ttl_seconds:600}`.
+  actions:["enhance","generate"], max_reference_images:10, polling:true, cancellation_status:true, result_ttl_seconds:600}`.
+  Feature-detect `cancellation_status` before relying on retained cancellation.
 - `POST /enhance` accepts JSON and **returns text, without generating an image**:
   - `prompt`: nonempty string, at most 16000 characters. No built-in project style is added.
   - `mode`: `t2i` or `i2i`. Omit it to choose T2I without references or I2I with references.
@@ -455,7 +456,16 @@ replace Bearer authentication. Send the same access-key header on every status, 
 | --- | --- |
 | `GET /requests/{request_id}` | Returns state, queue position and progress. Poll every 1–2 seconds. |
 | `GET /requests/{request_id}/result` | Returns the PNG or enhancement JSON when finished; 409 with Retry-After while pending. |
-| `DELETE /requests/{request_id}` | Cancels queued/running work or discards a retained result, returns 204. |
+| `DELETE /requests/{request_id}` | Cancels queued/running work or discards a retained result, frees the token and its slot, returns 204. |
+| `DELETE /requests/{request_id}?retain_status=true` | Requests cancellation but keeps the request, watcher and slot; returns 204 for a known token. |
+
+Plain DELETE cancels and discards: the token and its capacity slot are freed and later calls return 404. With
+`retain_status=true`, queued or held work becomes `cancelled` immediately; running, loading or paused work reports
+`cancelling` with `expires_in: null` and no `result_url` (its result returns 409) until the worker finishes teardown,
+even past the 30-minute request timeout, and then reports `cancelled`. A request that already finished keeps its
+`done` or `failed` outcome, and a `done` result remains retrievable. Repeating the retained call is harmless and does
+not extend the TTL. **A 204, a 404, or a change in `active_requests` does not confirm teardown; only a polled terminal
+`cancelled` state does.** A `failed` "interrupted" state is an actionable failure, not a confirmed cancellation.
 
 Example status response:
 
@@ -475,10 +485,14 @@ When done, status supplies `result_url` and `expires_in` (seconds). Fetch the re
 Status requests alone do not consume or extend the result's lifetime. For `failed`/`cancelled`, inspect `error` and
 fetch the error result or delete the request to free its slot.
 
-Unclaimed completed results/errors expire after **10 minutes**. Unfinished jobs time out after **30 minutes** and
-their inputs are released after worker teardown. Disconnecting after a 202 does not cancel asynchronous work: use
-DELETE. Disabling the API or shutting down ImageAtelier cancels and clears outstanding requests. Tokens and images
-are memory-only; after consumption, cancellation, expiry or app restart the token returns 404.
+Unclaimed completed results/errors expire after **10 minutes**. A retained cancellation or error starts that
+10-minute clock when its terminal state is observed. Fetching the result consumes the request (`cancelled` returns
+503), and a plain DELETE discards it. Retained requests count toward the two-request limit, so a third request returns
+429 with `Retry-After`. Unfinished jobs time out after **30 minutes** and their inputs are released after worker
+teardown, except that a retained cancellation keeps waiting for the real terminal state. Disconnecting after a 202
+does not cancel asynchronous work: use DELETE. Disabling the API or shutting down ImageAtelier cancels and clears
+outstanding requests. Tokens and images are memory-only; after consumption, plain DELETE, expiry or app restart the
+token returns 404.
 
 Using the `post()` helper above, a polling enhancement looks like this:
 

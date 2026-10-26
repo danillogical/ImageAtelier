@@ -124,7 +124,7 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
                 entry.update(state='failed', error='Image job was interrupted', error_status=503, finished_at=now)
             elif snapshot['state'] in ('done', 'failed', 'cancelled'):
                 entry.update(state=snapshot['state'], error=snapshot.get('error'), error_status=503, finished_at=now)
-            elif now > entry['deadline']:
+            elif now > entry['deadline'] and not entry['cancel_requested']:
                 entry.update(state='failed', error='Memory API request timed out', error_status=504, finished_at=now)
                 engine.abandon_memory(entry['job_id'])
         return snapshot
@@ -189,7 +189,7 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
         return {'service': 'imageatelier', 'mode': 'memory', 'stores_images': False,
                 'provider': 'qwen-image-2.1', 'active_requests': active,
                 'actions': ['enhance', 'generate'], 'max_reference_images': 10,
-                'polling': True, 'result_ttl_seconds': RESULT_TTL}
+                'polling': True, 'cancellation_status': True, 'result_ttl_seconds': RESULT_TTL}
 
     @app.get('/requests/{token}')
     async def request_status(token: str):
@@ -209,10 +209,18 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
             release(token)
 
     @app.delete('/requests/{token}', status_code=204)
-    async def cancel_request(token: str):
-        if token not in pending:
+    async def cancel_request(token: str, retain_status: bool = False):
+        entry = pending.get(token)
+        if entry is None:
             raise HTTPException(404, 'Unknown or expired request')
-        release(token)
+        if not retain_status:
+            release(token)
+            return Response(status_code=204)
+        observe(entry)
+        if entry['finished_at'] is None:
+            # Retained cancellation stays pollable until the worker publishes the job's terminal state.
+            entry['cancel_requested'] = True
+            engine.cancel(entry['job_id'])
         return Response(status_code=204)
 
     @app.post('/generate')
@@ -290,6 +298,7 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
                 pending[token] = {
                     'job_id': job_id, 'enhance': enhance, 'deadline': asyncio.get_running_loop().time() + REQUEST_TIMEOUT,
                     'finished_at': None, 'state': None, 'error': None, 'error_status': 503,
+                    'cancel_requested': False,
                 }
                 pending[token]['task'] = asyncio.create_task(watch(token))
                 retained = True

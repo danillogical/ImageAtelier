@@ -122,8 +122,10 @@ both listeners. `IMAGEATELIER_API_PORT` and `IMAGEATELIER_UI_PORT` override thei
 
 Both listeners share the existing single GPU worker and selected image model/text encoder; there is no second model
 process. Both actions wait for completion by default. Set `wait: false` to receive a token immediately, poll for queue/step/token
-progress, then fetch the result. DELETE cancels; unclaimed completed results expire after ten minutes. The memory API allows
-two outstanding requests across both actions (including retained results) and returns 429 when full. Reference inputs are image data URLs,
+progress, then fetch the result. DELETE cancels and discards; `DELETE ...?retain_status=true` (advertised by `/health`
+`cancellation_status`) keeps the request pollable as `cancelling` until worker teardown finishes, then `cancelled`, until it is
+consumed, discarded or expires. Unclaimed completed results expire after ten minutes. The memory API allows
+two outstanding requests across both actions (including retained results and cancellations) and returns 429 when full. Reference inputs are image data URLs,
 never local paths or remote URLs. Per-request references, output bytes and job records are released after response,
 disconnect, timeout or cancellation. Model weights remain resident for reuse. This is application-level memory-only image
 handling; macOS may still use virtual-memory swap. Settings, model weights and normal UI data retain their usual storage.
