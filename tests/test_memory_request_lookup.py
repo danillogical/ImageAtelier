@@ -203,3 +203,127 @@ def test_legacy_requests_stay_unindexed_and_keep_their_existing_shapes(memory_ap
     assert set(ticket) == {'request_id', 'status_url', 'result_url', 'cancel_url'}
     assert client.get(LOOKUP).status_code == 404
     assert client.delete(ticket['cancel_url']).status_code == 204
+
+
+@pytest.mark.parametrize('action,method', [('generate', 'submit_memory'), ('enhance', 'submit_memory_enhance')])
+def test_identity_never_enters_engine_parameters_or_changes_settings(memory_api, monkeypatch, action, method):
+    client, h, cfg = memory_api
+    original = getattr(h.engine, method)
+    seen = []
+    before = dict(cfg.values)
+
+    def capture(params, images):
+        seen.append(dict(params))
+        return original(params, images)
+
+    monkeypatch.setattr(h.engine, method, capture)
+    admitted = post(client, action)
+    assert admitted.status_code == 202, admitted.text
+    assert len(seen) == 1
+    assert CLIENT not in repr(seen) and REQUEST not in repr(seen)
+    assert not any('client' in key or 'request' in key for key in seen[0])
+    assert cfg.values == before
+    try:
+        recovered = client.get(LOOKUP)
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json()['request_id'] == admitted.json()['request_id']
+    finally:
+        client.delete(admitted.json()['cancel_url'])
+
+
+def test_full_capacity_does_not_erase_duplicates_or_reserve_refused_identities(memory_api):
+    client, h, _ = memory_api
+    h.behaviour.append('block')
+    first = post(client)
+    assert first.status_code == 202, first.text
+    ticket = first.json()
+    wait_until(lambda: client.get(ticket['status_url']).json()['state'] == 'running')
+    other_client = 'other-worlds-client-0123456789abcdef'
+    other_headers = {**HEADERS, 'X-ImageAtelier-Client-Id': other_client}
+    other_lookup = LOOKUP.replace(CLIENT, other_client)
+    second = client.post('/generate', headers=other_headers, json={'prompt': 'second client', 'wait': False})
+    assert second.status_code == 202, second.text
+    try:
+        assert client.get(LOOKUP).json().get('request_id') == ticket['request_id']
+        assert client.get(other_lookup).json().get('request_id') == second.json()['request_id']
+        assert ticket['request_id'] != second.json()['request_id']
+        assert post(client).status_code == 409
+        refused_id = 'third-worlds-work-0123456789abcdef'
+        refused_headers = {**HEADERS, 'X-ImageAtelier-Request-Id': refused_id}
+        refused_lookup = LOOKUP.replace(REQUEST, refused_id)
+        refused = client.post('/enhance', headers=refused_headers, json={'prompt': 'third', 'wait': False})
+        assert refused.status_code == 429, refused.text
+        assert client.get(refused_lookup).status_code == 404
+        assert client.delete(second.json()['cancel_url']).status_code == 204
+        admitted = client.post('/enhance', headers=refused_headers, json={'prompt': 'third', 'wait': False})
+        assert admitted.status_code == 202, admitted.text
+        try:
+            assert client.get(refused_lookup).json().get('request_id') == admitted.json()['request_id']
+        finally:
+            client.delete(admitted.json()['cancel_url'])
+    finally:
+        client.delete(ticket['cancel_url'])
+        client.delete(second.json()['cancel_url'])
+
+
+def hold_request_intake(monkeypatch):
+    from starlette.requests import Request
+    entered, release = threading.Event(), threading.Event()
+    original = Request.stream
+
+    async def stream(request):
+        if request.headers.get('x-imageatelier-request-id') == REQUEST:
+            entered.set()
+            while not release.is_set():
+                await asyncio.sleep(.01)
+        async for chunk in original(request):
+            yield chunk
+
+    monkeypatch.setattr(Request, 'stream', stream)
+    return entered, release
+
+
+@pytest.mark.parametrize('interruption', ['shutdown', 'disabled'])
+def test_interrupted_receiving_claim_cannot_resurrect_engine_work(memory_api, monkeypatch, interruption):
+    client, h, cfg = memory_api
+    entered, release = hold_request_intake(monkeypatch)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(post, client)
+        try:
+            assert entered.wait(5), 'Request never reached its body intake'
+            assert client.get(LOOKUP).status_code == 202
+            if interruption == 'shutdown':
+                client.portal.call(client.app.state.cancel_memory_requests)
+                assert client.get(LOOKUP).status_code == 404
+            else:
+                cfg.values['network_api_enabled'] = False
+            release.set()
+            admitted = pending.result(timeout=10)
+            assert admitted.status_code == 503, admitted.text
+            assert not h.engine._jobs
+        finally:
+            release.set()
+            admitted = pending.result(timeout=10)
+            cfg.values['network_api_enabled'] = True
+            if admitted.status_code == 202:
+                client.delete(admitted.json()['cancel_url'])
+    assert client.get(LOOKUP).status_code == 404
+    assert client.get('/health').json()['active_requests'] == 0
+
+
+def test_listener_disable_clears_the_admitted_lookup_and_reservation(memory_api):
+    client, h, cfg = memory_api
+    h.behaviour.append('block')
+    admitted = post(client)
+    assert admitted.status_code == 202, admitted.text
+    ticket = admitted.json()
+    wait_until(lambda: client.get(ticket['status_url']).json()['state'] == 'running')
+    try:
+        assert client.get(LOOKUP).status_code == 200
+        cfg.values['network_api_enabled'] = False
+        wait_until(lambda: not h.engine._jobs)
+    finally:
+        cfg.values['network_api_enabled'] = True
+        client.delete(ticket['cancel_url'])
+    assert client.get(LOOKUP).status_code == 404
+    assert client.get('/health').json()['active_requests'] == 0
