@@ -5,6 +5,7 @@ import asyncio
 import base64
 import binascii
 import io
+import re
 import secrets
 import warnings
 from contextlib import asynccontextmanager
@@ -21,6 +22,9 @@ MAX_REFERENCE_BYTES = 8 * 1024**2
 MAX_REFERENCE_PIXELS = 16_000_000
 REQUEST_TIMEOUT = 1800
 RESULT_TTL = 600
+IDENTITY = re.compile(r'[A-Za-z0-9_-]{16,128}')
+CLIENT_HEADER = 'X-ImageAtelier-Client-Id'
+REQUEST_HEADER = 'X-ImageAtelier-Request-Id'
 
 
 class Generate(BaseModel):
@@ -95,12 +99,23 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     active = 0
     pending = {}
+    # Live correlation claims, one per capacity reservation; never a content cache.
+    lookups = {}
+
+    def drop(claim):
+        if claim is not None and lookups.get(claim['key']) is claim:
+            del lookups[claim['key']]
+
+    def ticket(token):
+        return {'request_id': token, 'status_url': f'/requests/{token}',
+                'result_url': f'/requests/{token}/result', 'cancel_url': f'/requests/{token}'}
 
     def release(token):
         nonlocal active
         entry = pending.pop(token, None)
         if entry is None:
             return
+        drop(entry.get('claim'))
         engine.abandon_memory(entry['job_id'])
         task = entry.get('task')
         if task and task is not asyncio.current_task():
@@ -111,6 +126,8 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
         tasks = [entry['task'] for entry in pending.values()]
         for token in list(pending):
             release(token)
+        # Receiving claims are dropped too; their requests still own their capacity slots.
+        lookups.clear()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -189,7 +206,8 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
         return {'service': 'imageatelier', 'mode': 'memory', 'stores_images': False,
                 'provider': 'qwen-image-2.1', 'active_requests': active,
                 'actions': ['enhance', 'generate'], 'max_reference_images': 10,
-                'polling': True, 'cancellation_status': True, 'result_ttl_seconds': RESULT_TTL}
+                'polling': True, 'cancellation_status': True, 'request_lookup': True,
+                'result_ttl_seconds': RESULT_TTL}
 
     @app.get('/requests/{token}')
     async def request_status(token: str):
@@ -223,6 +241,18 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
             engine.cancel(entry['job_id'])
         return Response(status_code=204)
 
+    @app.get('/request-lookup/{client_id}/{client_request_id}')
+    async def request_lookup(client_id: str, client_request_id: str):
+        if not (IDENTITY.fullmatch(client_id) and IDENTITY.fullmatch(client_request_id)):
+            raise HTTPException(400, 'Invalid request identity')
+        claim = lookups.get((client_id, client_request_id))
+        if claim is None or (claim['token'] is not None and claim['token'] not in pending):
+            raise HTTPException(404, 'Unknown or expired request')
+        if claim['token'] is None:
+            return JSONResponse({'state': 'receiving', 'kind': claim['kind']},
+                                status_code=202, headers={'Retry-After': '1'})
+        return {**ticket(claim['token']), 'kind': claim['kind']}
+
     @app.post('/generate')
     async def generate(request: Request):
         return await execute(request, enhance=False)
@@ -233,10 +263,26 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
 
     async def execute(request: Request, *, enhance: bool):
         nonlocal active
+        clients = request.headers.getlist(CLIENT_HEADER)
+        requests = request.headers.getlist(REQUEST_HEADER)
+        claim = None
+        if clients or requests:
+            if (len(clients) != 1 or len(requests) != 1
+                    or IDENTITY.fullmatch(clients[0]) is None or IDENTITY.fullmatch(requests[0]) is None):
+                raise HTTPException(
+                    400, 'X-ImageAtelier-Client-Id and X-ImageAtelier-Request-Id must be sent together '
+                         'as 16-128 characters of A-Z, a-z, 0-9, _ or -')
+            key = (clients[0], requests[0])
+            if key in lookups:
+                raise HTTPException(409, 'This client request is already in progress; use GET /request-lookup to recover it')
+            claim = {'key': key, 'kind': 'enhance' if enhance else 'generate', 'token': None}
         if active >= 2:
             raise HTTPException(429, 'Image request queue is full; retry later', headers={'Retry-After': '5'})
         # Increment before awaiting: bounds both the model queue and in-flight request bodies.
         active += 1
+        if claim is not None:
+            # Reserve the exact pair together with its capacity slot, before any await.
+            lookups[claim['key']] = claim
         images, job_id, retained = [], None, False
         try:
             body = bytearray()
@@ -253,6 +299,13 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
                 raise HTTPException(408, 'Request body timed out')
             finally:
                 body.clear()
+            # No await occurs from here until the ticket is recorded.
+            if claim is not None and lookups.get(claim['key']) is not claim:
+                raise HTTPException(503, 'Memory request was interrupted')
+            if claim is not None and not enabled():
+                raise HTTPException(503, 'Memory API is disabled')
+            if claim is not None and payload.wait:
+                raise HTTPException(400, 'Correlated requests require wait: false')
             cfg = settings.get()
             try:
                 if not enhance:
@@ -300,12 +353,13 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
                     'finished_at': None, 'state': None, 'error': None, 'error_status': 503,
                     'cancel_requested': False,
                 }
+                pending[token]['claim'] = claim
+                if claim is not None:
+                    claim['token'] = token
                 pending[token]['task'] = asyncio.create_task(watch(token))
                 retained = True
-                return JSONResponse({
-                    'request_id': token, 'status_url': f'/requests/{token}',
-                    'result_url': f'/requests/{token}/result', 'cancel_url': f'/requests/{token}',
-                }, status_code=202, headers={'Location': f'/requests/{token}', 'Retry-After': '1'})
+                return JSONResponse(ticket(token), status_code=202,
+                                    headers={'Location': f'/requests/{token}', 'Retry-After': '1'})
             del payload
             deadline = asyncio.get_running_loop().time() + REQUEST_TIMEOUT
             while True:
@@ -328,6 +382,7 @@ def create_api(engine, settings, authorize, enabled=lambda: True) -> FastAPI:
                 image.close()
             images.clear()
             if not retained:
+                drop(claim)
                 active -= 1
 
     return app

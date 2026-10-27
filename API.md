@@ -342,8 +342,9 @@ UI job processing continues in the shared engine. Configured listeners are resto
 Every route requires `Authorization: Bearer <access_key>`. No UI, project, filesystem, or history routes are exposed.
 
 - `GET /health` reports `{service:"imageatelier", mode:"memory", stores_images:false, provider:"qwen-image-2.1", active_requests,
-  actions:["enhance","generate"], max_reference_images:10, polling:true, cancellation_status:true, result_ttl_seconds:600}`.
-  Feature-detect `cancellation_status` before relying on retained cancellation.
+  actions:["enhance","generate"], max_reference_images:10, polling:true, cancellation_status:true, request_lookup:true,
+  result_ttl_seconds:600}`. Feature-detect `cancellation_status` before relying on retained cancellation, and
+  `request_lookup` before sending correlation headers.
 - `POST /enhance` accepts JSON and **returns text, without generating an image**:
   - `prompt`: nonempty string, at most 16000 characters. No built-in project style is added.
   - `mode`: `t2i` or `i2i`. Omit it to choose T2I without references or I2I with references.
@@ -388,7 +389,8 @@ both POST routes, up to ten. The same 8 MiB file-byte / 16-million-pixel limit a
 At most two memory requests can be outstanding **across both actions**, including queued work and unclaimed polling
 results. A full queue returns 429
 with Retry-After. Malformed requests return 400, oversized bodies 413, unavailable models 409, unavailable/cancelled jobs
-503, and timeout 504. Client disconnect cancels the job (499 if a response can still be delivered). Each action has a
+503, and timeout 504. A live duplicate correlated identity also returns 409. Client disconnect cancels the job (499 if a
+response can still be delivered). Each action has a
 30-minute timeout, including queue time; configure the client's read timeout and any reverse proxy accordingly.
 An explicit retry is needed after an HTTP error; there is no hidden provider fallback.
 
@@ -520,6 +522,42 @@ finally:
         if error.code != 404:
             raise
 ```
+
+#### Optional exact request lookup
+
+A `wait: false` caller may optionally correlate its request with two opaque identifiers, so that it can recover the
+request's ticket after a lost response or a client restart:
+
+- `X-ImageAtelier-Client-Id`: the caller's identity, 16–128 ASCII characters from `A-Z`, `a-z`, `0-9`, `_` and `-`.
+- `X-ImageAtelier-Request-Id`: the caller's chosen request identity, with the same format.
+
+Send both headers or neither; a partial or malformed pair, or a correlated request that does not set `wait: false`
+(including the default `true`), returns 400 before any engine admission. Header-free requests keep their existing
+behavior and ticket shape. A correlated `wait: false` POST returns the same four-key ticket as an uncorrelated one.
+
+`GET /request-lookup/{client_id}/{client_request_id}` (Bearer-authenticated like every route) recovers that ticket while
+the claim is still live in memory:
+
+| Response | Meaning |
+| --- | --- |
+| 202 `{"state":"receiving","kind":"generate"\|"enhance"}` | The body is still being received; there is no request token yet. `Retry-After: 1` is sent. |
+| 200 with `request_id`, `status_url`, `result_url`, `cancel_url`, `kind` | The request was admitted; these URLs equal its original 202 ticket. |
+| 404 | The pair is unknown, consumed, discarded, expired, released or gone after a restart. |
+| 400 | The path identifiers are malformed. |
+
+Lookup is exact and authenticated: it never lists requests, scans other clients, or returns prompts, references,
+engine job ids, keys, paths, settings or output. The identifiers are opaque correlation values, not credentials; the
+Bearer access key is still required. Posting a pair that is already live (receiving, admitted or retained) returns 409
+without starting another engine job or reservation. A 409 can also mean an unready model; in that case lookup returns
+404. On any 409, look up the pair instead of re-POSTing.
+
+Lookup lives only as long as the in-memory claim. A retained `DELETE ?retain_status=true` keeps it available through
+real teardown and the retained result's lifetime. Plain DELETE, consuming the result (success or error), TTL expiry,
+disabling the API or shutting down/restarting ImageAtelier remove it. **This is a volatile, memory-only index: a 404
+means unknown or lost work, not proof that the remote job was cancelled, and it does not license an automatic
+re-POST.** Duplicate protection likewise lasts only while that claim or token is retained. Persist the identifiers
+before POSTing and never silently replay an uncertain submission. Correlation metadata is never passed to the engine,
+stored in settings or files, or included in status, result, metadata or plain ticket shapes.
 
 ### Network UI (`:8002`)
 

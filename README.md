@@ -124,7 +124,8 @@ Both listeners share the existing single GPU worker and selected image model/tex
 process. Both actions wait for completion by default. Set `wait: false` to receive a token immediately, poll for queue/step/token
 progress, then fetch the result. DELETE cancels and discards; `DELETE ...?retain_status=true` (advertised by `/health`
 `cancellation_status`) keeps the request pollable as `cancelling` until worker teardown finishes, then `cancelled`, until it is
-consumed, discarded or expires. Unclaimed completed results expire after ten minutes. The memory API allows
+consumed, discarded or expires. `/health` `request_lookup` advertises exact, memory-only recovery of an optional
+correlated `wait: false` request; see API.md. Unclaimed completed results expire after ten minutes. The memory API allows
 two outstanding requests across both actions (including retained results and cancellations) and returns 429 when full. Reference inputs are image data URLs,
 never local paths or remote URLs. Per-request references, output bytes and job records are released after response,
 disconnect, timeout or cancellation. Model weights remain resident for reuse. This is application-level memory-only image
