@@ -25,7 +25,7 @@ is a starting point for choosing a converted suite, not a guarantee that the ent
 ```
 
 `./generate-imageatelier-app.sh [folder]` builds a double-clickable launcher for `local.sh` in this checkout.
-Running `local.sh` again restarts the existing local window/server on the selected `PORT` (8000 by default).
+Running `local.sh` again restarts the existing local window/server on the selected `PORT` (8400 by default).
 Closing the local window shows “Shutting down background server…” until the server has exited, then closes the app.
 Data lives in `./data` for the network server or `./data-local` for the local window; override with `IMAGEATELIER_DATA`.
 To start the network server at login, use `./install-launchd.sh`; remove it with `./install-launchd.sh --uninstall`.
@@ -108,11 +108,11 @@ GGUF and LoRA-only checkpoints are not supported by this import flow.
 Open **Settings → Network access** in the local app. The two switches are independent, off by default, take effect
 immediately, and persist across restarts:
 
-- **Worlds API** listens on `http://<laptop>.local:8001`. `/enhance` returns a rewritten prompt as JSON for you to review
+- **Worlds API** listens on `http://<laptop>.local:8401`. `/enhance` returns a rewritten prompt as JSON for you to review
   or change; `/generate` separately returns PNG bytes for generation or image edits. Both accept multiple reference images,
   up to ten total (including an edit's source). It never creates projects, saves output images, writes reference temp files,
   or keeps image-job history.
-- **Network UI** listens on `http://<laptop>.local:8002`. It serves the normal app with the same projects, images, model
+- **Network UI** listens on `http://<laptop>.local:8402`. It serves the normal app with the same projects, images, model
   settings, and disk storage as the local window. Sign in as `imageatelier`, using the access key as the password.
 
 Copy the **Access key** from local Settings. API clients send it as `Authorization: Bearer <key>`. Network controls and
@@ -137,12 +137,12 @@ From **webstudio.local**, call the laptop URL displayed in Settings; webstudio d
 curl --fail -H "Authorization: Bearer $IMAGEATELIER_ACCESS_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"An anime illustration of a quiet village.","width":832,"height":1248,"steps":40,"seed":42}' \
-  "http://<laptop>.local:8001/generate" --output generated.png
+  "http://<laptop>.local:8401/generate" --output generated.png
 ```
 
 This provides the remote worker endpoint. Worlds' image-provider adapter must call this endpoint and commit the returned
 PNG on webstudio; pointing Worlds at it requires that adapter rather than moving the game or asset store to this laptop.
-See [API.md](API.md#memory-worker-8001) for the agent/client contract, request limits, errors and a complete
+See [API.md](API.md#memory-worker-8401) for the agent/client contract, request limits, errors and a complete
 enhance → revise → generate example with multiple reference images.
 
 ## Phone setup

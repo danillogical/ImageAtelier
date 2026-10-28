@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local-only ImageAtelier on this Mac: http://localhost:${PORT:-8000}, bound to 127.0.0.1, own data dir.
+# Local-only ImageAtelier on this Mac: http://localhost:${PORT:-8400}, bound to 127.0.0.1, own data dir.
 # First run seeds settings with the complete official Qwen Q8 suite.
 # Restarts an existing local ImageAtelier on the selected port.
 #   ./local.sh            open the window (quit it to stop the server)
@@ -16,7 +16,7 @@ if [[ ! -f "$IMAGEATELIER_DATA/settings.json" ]]; then
   echo "seeded $IMAGEATELIER_DATA/settings.json (official Q8 suite)"
 fi
 
-export BIND=127.0.0.1 PORT="${PORT:-8000}"
+export BIND=127.0.0.1 PORT="${PORT:-8400}"
 if [[ ! -x .venv/bin/python ]]; then
   echo "error: .venv is missing; run ./setup.sh first" >&2; exit 1
 fi

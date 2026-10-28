@@ -160,7 +160,7 @@ test("deleting a selected custom card clears its selection", async () => {
 
 
 test("network toggles independently persist API and UI listeners", async () => {
-  const networkInfo = { api_url: "http://laptop.local:8001", ui_url: "http://laptop.local:8002", access_key: "test-key" };
+  const networkInfo = { api_url: "http://laptop.local:8401", ui_url: "http://laptop.local:8402", access_key: "test-key" };
   const result = await settings("ready", { q8: "ready", networkInfo });
   const toggle = (name) => result.all.find((n) => n.attrs?.["aria-label"] === name && n.attrs?.role === "switch");
   await toggle("Worlds API").attrs.onchange({ target: { checked: true } });

@@ -127,7 +127,7 @@ def _close_on_signal(shutdown: Shutdown, stop: threading.Event) -> None:
 
 
 def main() -> int:
-    port = int(os.environ.get("PORT", "8000"))
+    port = int(os.environ.get("PORT", "8400"))
     if port_open(port):
         print(f"error: something is already listening on {HOST}:{port}; stop it or set PORT", file=sys.stderr)
         return 1

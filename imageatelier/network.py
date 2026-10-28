@@ -101,8 +101,8 @@ class Network:
         self.app, self.engine, self.settings = app, engine, settings
         self.key_path = root / 'network-access-key'
         self._key = None
-        self.api_port = int(os.environ.get('IMAGEATELIER_API_PORT', '8001'))
-        self.ui_port = int(os.environ.get('IMAGEATELIER_UI_PORT', '8002'))
+        self.api_port = int(os.environ.get('IMAGEATELIER_API_PORT', '8401'))
+        self.ui_port = int(os.environ.get('IMAGEATELIER_UI_PORT', '8402'))
         self.hostname = socket.gethostname().removesuffix('.local') + '.local'
         self.listeners = {}
         self.lock = asyncio.Lock()

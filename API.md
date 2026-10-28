@@ -337,7 +337,7 @@ both default to false. Remote UI clients and foreign browser origins cannot read
 Bind failures return 409 and preserve the previous settings/listeners. Disabling either listener cancels its connections;
 UI job processing continues in the shared engine. Configured listeners are restored on startup.
 
-### Memory worker (`:8001`)
+### Memory worker (`:8401`)
 
 Every route requires `Authorization: Bearer <access_key>`. No UI, project, filesystem, or history routes are exposed.
 
@@ -402,7 +402,7 @@ are applied automatically.
 
 #### Agent/client example: enhance, revise, then edit with references
 
-Use the memory listener on port 8001, not the project's `/api/.../enhance` routes on the disk-backed UI. Read the access
+Use the memory listener on port 8401, not the project's `/api/.../enhance` routes on the disk-backed UI. Read the access
 key from an environment variable; do not commit or log it. The example's input and output files live on the **client**
 (webstudio), while ImageAtelier receives images inline. Use `mode: "t2i"` and omit `references` for text-only enhancement.
 
@@ -413,7 +413,7 @@ import os
 from pathlib import Path
 import urllib.request
 
-base = os.environ["IMAGEATELIER_URL"].rstrip("/")  # http://<laptop>.local:8001
+base = os.environ["IMAGEATELIER_URL"].rstrip("/")  # http://<laptop>.local:8401
 key = os.environ["IMAGEATELIER_ACCESS_KEY"]
 http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -559,7 +559,7 @@ re-POST.** Duplicate protection likewise lasts only while that claim or token is
 before POSTing and never silently replay an uncertain submission. Correlation metadata is never passed to the engine,
 stored in settings or files, or included in status, result, metadata or plain ticket shapes.
 
-### Network UI (`:8002`)
+### Network UI (`:8402`)
 
 The normal app is available with HTTP Basic authentication: username `imageatelier`, password equal to the access key.
 It uses normal disk-backed projects and generation. Its network/key controls are unavailable remotely. Legacy LAN-bound

@@ -10,15 +10,15 @@ from imageatelier import local_restart as restart
 def test_selects_window_server_and_workers_only():
     commands = {
         1: (0, "python -m imageatelier.gui"),
-        2: (1, "python -m uvicorn imageatelier.app:app --host 127.0.0.1 --port 8000 --timeout-graceful-shutdown 3"),
+        2: (1, "python -m uvicorn imageatelier.app:app --host 127.0.0.1 --port 8400 --timeout-graceful-shutdown 3"),
         3: (2, "python -m imageatelier.convert_suite"),
         4: (0, "python -m uvicorn imageatelier.app:app --host 127.0.0.1 --port 8010"),
-        5: (0, "python -m uvicorn imageatelier.app:app --host 0.0.0.0 --port 8000"),
-        6: (0, "python -m uvicorn another.app:app --host 127.0.0.1 --port 8000"),
+        5: (0, "python -m uvicorn imageatelier.app:app --host 0.0.0.0 --port 8400"),
+        6: (0, "python -m uvicorn another.app:app --host 127.0.0.1 --port 8400"),
         7: (0, "python -m imageatelier.gui"),
     }
     current = {pid: restart.Process(pid, parent, cmd) for pid, (parent, cmd) in commands.items()}
-    assert set(restart.targets(current, 8000)) == {1, 2, 3}
+    assert set(restart.targets(current, 8400)) == {1, 2, 3}
     assert set(restart.targets(current, 8010)) == {4}
     assert restart.targets(current, 9999) == {}
 

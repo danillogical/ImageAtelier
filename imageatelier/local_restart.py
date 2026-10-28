@@ -99,7 +99,7 @@ def stop(selected: dict[int, Process], timeout: float = 15.0) -> None:
 
 def main() -> int:
     try:
-        port = int(os.environ.get("PORT", "8000"))
+        port = int(os.environ.get("PORT", "8400"))
         if not 1 <= port <= 65535:
             raise ValueError("PORT must be between 1 and 65535")
         selected = targets(processes(), port)
